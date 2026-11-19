@@ -1,22 +1,120 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="using:App.Desktop.ViewModels"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
         x:Class="App.Desktop.Views.MainWindow"
-        x:DataType="vm:MainViewModel"
-        Icon="/Assets/avalonia-logo.ico"
-        Title="App.Desktop">
+        Title="Keyce Code"
+        Width="1200"
+        Height="750"
+        MinWidth="800"
+        MinHeight="500"
+        WindowStartupLocation="CenterScreen"
+        Background="#1E1E1E">
 
-    <Design.DataContext>
-        <!-- This only sets the DataContext for the previewer in an IDE,
-             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-        <vm:MainViewModel />
-    </Design.DataContext>
+	<DockPanel>
 
-    <TextBox Text="{Binding Greeting}"
-             HorizontalAlignment="Center"
-             VerticalAlignment="Center" />
+		<!-- MENU PRINCIPAL -->
+		<Menu DockPanel.Dock="Top" Background="#333333">
+			<MenuItem Header="_Fichier">
+				<MenuItem Header="Nouveau fichier"/>
+				<MenuItem Header="Ouvrir un fichier"/>
+				<MenuItem Header="Ouvrir un dossier"/>
+				<Separator/>
+				<MenuItem Header="Enregistrer"/>
+			</MenuItem>
+			<MenuItem Header="_Édition"/>
+			<MenuItem Header="_Sélection"/>
+			<MenuItem Header="_Affichage"/>
+			<MenuItem Header="_Aide"/>
+		</Menu>
 
+		<!-- BARRE D'ETAT -->
+		<Border DockPanel.Dock="Bottom"
+                Height="25"
+                Background="#007ACC">
+			<Grid ColumnDefinitions="*,Auto">
+				<TextBlock Text="Prêt"
+                           Foreground="White"
+                           Margin="10,0"
+                           VerticalAlignment="Center"/>
+				<TextBlock Grid.Column="1"
+                           Text="C# | UTF-8"
+                           Foreground="White"
+                           Margin="10,0"
+                           VerticalAlignment="Center"/>
+			</Grid>
+		</Border>
+
+		<!-- INTERFACE PRINCIPALE -->
+		<Grid ColumnDefinitions="50,230,4,*">
+
+			<!-- BARRE LATERALE -->
+			<Border Grid.Column="0" Background="#252526">
+				<StackPanel Spacing="25" Margin="0,15">
+					<TextBlock Text="📁" FontSize="23"
+                               HorizontalAlignment="Center"/>
+					<TextBlock Text="🔍" FontSize="23"
+                               HorizontalAlignment="Center"/>
+					<TextBlock Text="⚙" FontSize="23"
+                               HorizontalAlignment="Center"/>
+				</StackPanel>
+			</Border>
+
+			<!-- EXPLORATEUR -->
+			<Border Grid.Column="1" Background="#252526">
+				<StackPanel Margin="12">
+					<TextBlock Text="EXPLORATEUR"
+                               Foreground="#BBBBBB"
+                               FontSize="12"
+                               FontWeight="Bold"
+                               Margin="0,5,0,20"/>
+
+					<TextBlock Text="KEYCE CODE"
+                               Foreground="White"
+                               FontWeight="Bold"/>
+
+					<TextBlock Text="Aucun dossier ouvert"
+                               Foreground="#858585"
+                               FontSize="12"
+                               Margin="5,15"/>
+				</StackPanel>
+			</Border>
+
+			<GridSplitter Grid.Column="2"
+                          Background="#444444"
+                          ResizeDirection="Columns"/>
+
+			<!-- ZONE CENTRALE -->
+			<Grid Grid.Column="3"
+                  Background="#1E1E1E"
+                  RowDefinitions="35,*">
+
+				<Border Background="#252526">
+					<TextBlock Text="Bienvenue dans Keyce Code"
+                               Foreground="White"
+                               VerticalAlignment="Center"
+                               Margin="15,0"/>
+				</Border>
+
+				<StackPanel Grid.Row="1"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            Spacing="15">
+
+					<TextBlock Text="KEYCE CODE"
+                               FontSize="32"
+                               FontWeight="Bold"
+                               Foreground="#007ACC"
+                               HorizontalAlignment="Center"/>
+
+					<TextBlock Text="Votre environnement de développement"
+                               Foreground="#BBBBBB"
+                               FontSize="15"/>
+
+					<TextBlock Text="Ouvrez un dossier pour commencer."
+                               Foreground="#777777"
+                               FontSize="13"/>
+				</StackPanel>
+
+			</Grid>
+		</Grid>
+	</DockPanel>
 </Window>
