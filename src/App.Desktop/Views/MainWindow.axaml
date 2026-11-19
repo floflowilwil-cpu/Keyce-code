@@ -11,12 +11,12 @@
 
 	<DockPanel>
 
-		<!-- MENU PRINCIPAL -->
 		<Menu DockPanel.Dock="Top" Background="#333333">
 			<MenuItem Header="_Fichier">
 				<MenuItem Header="Nouveau fichier"/>
 				<MenuItem Header="Ouvrir un fichier"/>
-				<MenuItem Header="Ouvrir un dossier"/>
+				<MenuItem Header="Ouvrir un dossier"
+                          Click="OpenFolder_Click"/>
 				<Separator/>
 				<MenuItem Header="Enregistrer"/>
 			</MenuItem>
@@ -26,7 +26,6 @@
 			<MenuItem Header="_Aide"/>
 		</Menu>
 
-		<!-- BARRE D'ETAT -->
 		<Border DockPanel.Dock="Bottom"
                 Height="25"
                 Background="#007ACC">
@@ -43,10 +42,8 @@
 			</Grid>
 		</Border>
 
-		<!-- INTERFACE PRINCIPALE -->
 		<Grid ColumnDefinitions="50,230,4,*">
 
-			<!-- BARRE LATERALE -->
 			<Border Grid.Column="0" Background="#252526">
 				<StackPanel Spacing="25" Margin="0,15">
 					<TextBlock Text="📁" FontSize="23"
@@ -58,7 +55,6 @@
 				</StackPanel>
 			</Border>
 
-			<!-- EXPLORATEUR -->
 			<Border Grid.Column="1" Background="#252526">
 				<StackPanel Margin="12">
 					<TextBlock Text="EXPLORATEUR"
@@ -67,14 +63,17 @@
                                FontWeight="Bold"
                                Margin="0,5,0,20"/>
 
-					<TextBlock Text="KEYCE CODE"
+					<TextBlock x:Name="FolderName"
+                               Text="KEYCE CODE"
                                Foreground="White"
                                FontWeight="Bold"/>
 
-					<TextBlock Text="Aucun dossier ouvert"
-                               Foreground="#858585"
-                               FontSize="12"
-                               Margin="5,15"/>
+					<ListBox x:Name="ExplorerList"
+                             Background="#252526"
+                             Foreground="White"
+                             BorderThickness="0"
+                             Margin="0,10,0,0"
+                             SelectionChanged="ExplorerList_SelectionChanged"/>
 				</StackPanel>
 			</Border>
 
@@ -82,37 +81,31 @@
                           Background="#444444"
                           ResizeDirection="Columns"/>
 
-			<!-- ZONE CENTRALE -->
 			<Grid Grid.Column="3"
                   Background="#1E1E1E"
                   RowDefinitions="35,*">
 
 				<Border Background="#252526">
-					<TextBlock Text="Bienvenue dans Keyce Code"
+					<TextBlock x:Name="EditorTitle"
+                               Text="Bienvenue dans Keyce Code"
                                Foreground="White"
                                VerticalAlignment="Center"
                                Margin="15,0"/>
 				</Border>
 
-				<StackPanel Grid.Row="1"
-                            VerticalAlignment="Center"
-                            HorizontalAlignment="Center"
-                            Spacing="15">
-
-					<TextBlock Text="KEYCE CODE"
-                               FontSize="32"
-                               FontWeight="Bold"
-                               Foreground="#007ACC"
-                               HorizontalAlignment="Center"/>
-
-					<TextBlock Text="Votre environnement de développement"
-                               Foreground="#BBBBBB"
-                               FontSize="15"/>
-
-					<TextBlock Text="Ouvrez un dossier pour commencer."
-                               Foreground="#777777"
-                               FontSize="13"/>
-				</StackPanel>
+				<TextBox x:Name="EditorTextBox"
+                         Grid.Row="1"
+                         Background="#1E1E1E"
+                         Foreground="#D4D4D4"
+                         FontFamily="Consolas"
+                         FontSize="14"
+                         AcceptsReturn="True"
+                         AcceptsTab="True"
+                         TextWrapping="NoWrap"
+                         HorizontalScrollBarVisibility="Auto"
+                         VerticalScrollBarVisibility="Auto"
+                         BorderThickness="0"
+                         Padding="15"/>
 
 			</Grid>
 		</Grid>
