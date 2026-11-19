@@ -8,11 +8,18 @@ namespace App.Integrations.Terminal;
 
 public sealed class TerminalService : ITerminalService
 {
-    private readonly ConcurrentDictionary<TerminalSessionId, Process> _sessions = new();
+    private sealed class TerminalSession(Process process)
+    {
+        public Process Process { get; } = process;
+
+        public SemaphoreSlim Gate { get; } = new(1, 1);
+    }
+
+    private readonly ConcurrentDictionary<TerminalSessionId, TerminalSession>
+        _sessions = new();
 
     public event EventHandler<TerminalOutputEventArgs>? OutputReceived;
 
-    // Démarre une nouvelle session de terminal
     public Task<TerminalSessionId> StartSessionAsync(
         TerminalStartOptions options,
         CancellationToken ct = default)
@@ -30,16 +37,13 @@ public sealed class TerminalService : ITerminalService
             FileName = shell,
             WorkingDirectory = options.WorkingDirectory
                 ?? Environment.CurrentDirectory,
-
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-
             UseShellExecute = false,
             CreateNoWindow = true
         };
 
-        // Ajout des variables d'environnement
         if (options.Environment is not null)
         {
             foreach (var variable in options.Environment)
@@ -62,83 +66,149 @@ public sealed class TerminalService : ITerminalService
             }
 
             var sessionId = TerminalSessionId.New();
+            var session = new TerminalSession(process);
 
-            if (!_sessions.TryAdd(sessionId, process))
+            if (!_sessions.TryAdd(sessionId, session))
             {
+                process.Kill(entireProcessTree: true);
+
                 throw new InvalidOperationException(
                     "Impossible d'enregistrer la session.");
             }
 
-            // Lecture des sorties en arrière-plan
-            _ = MonitorSessionAsync(sessionId, process);
+            _ = MonitorSessionAsync(sessionId, session);
 
             return Task.FromResult(sessionId);
         }
         catch
         {
+            if (!process.HasExited)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch (InvalidOperationException)
+                {
+                    // Le processus est déjà terminé.
+                }
+            }
+
             process.Dispose();
             throw;
         }
     }
 
-    // Envoie une commande au terminal
     public async Task SendInputAsync(
         TerminalSessionId id,
         string input,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(input);
         ct.ThrowIfCancellationRequested();
 
-        if (!_sessions.TryGetValue(id, out var process))
+        if (!_sessions.TryGetValue(id, out var session))
         {
             throw new InvalidOperationException(
                 "Session de terminal introuvable.");
         }
 
-        if (process.HasExited)
-        {
-            throw new InvalidOperationException(
-                "Le processus du terminal est déjà arrêté.");
-        }
+        await session.Gate.WaitAsync(ct);
 
-        await process.StandardInput.WriteLineAsync(input.AsMemory(), ct);
-        await process.StandardInput.FlushAsync(ct);
+        try
+        {
+            if (session.Process.HasExited)
+            {
+                throw new InvalidOperationException(
+                    "Le processus du terminal est déjà arrêté.");
+            }
+
+            await session.Process.StandardInput.WriteLineAsync(
+                input.AsMemory(),
+                ct);
+
+            await session.Process.StandardInput.FlushAsync(ct);
+        }
+        finally
+        {
+            session.Gate.Release();
+        }
     }
 
-    // Surveille les sorties standard et les erreurs
+    public async Task StopSessionAsync(
+        TerminalSessionId id,
+        CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        if (!_sessions.TryGetValue(id, out var session))
+        {
+            throw new InvalidOperationException(
+                "Session de terminal introuvable.");
+        }
+
+        await session.Gate.WaitAsync(ct);
+
+        try
+        {
+            if (!session.Process.HasExited)
+            {
+                try
+                {
+                    session.Process.Kill(entireProcessTree: true);
+                }
+                catch (InvalidOperationException)
+                {
+                    // Le processus s'est terminé entre-temps.
+                }
+            }
+
+            await session.Process.WaitForExitAsync(ct);
+        }
+        finally
+        {
+            session.Gate.Release();
+        }
+    }
+
     private async Task MonitorSessionAsync(
         TerminalSessionId sessionId,
-        Process process)
+        TerminalSession session)
     {
         try
         {
             var outputTask = ReadOutputAsync(
                 sessionId,
-                process.StandardOutput);
+                session.Process.StandardOutput);
 
             var errorTask = ReadOutputAsync(
                 sessionId,
-                process.StandardError);
+                session.Process.StandardError);
 
             await Task.WhenAll(outputTask, errorTask);
         }
         catch (IOException)
         {
-            // Le processus peut fermer ses flux brutalement.
         }
         catch (ObjectDisposedException)
         {
-            // Le processus a déjà été libéré.
         }
         finally
         {
-            _sessions.TryRemove(sessionId, out _);
-            process.Dispose();
+            await session.Gate.WaitAsync();
+
+            try
+            {
+                _sessions.TryRemove(sessionId, out _);
+                session.Process.Dispose();
+            }
+            finally
+            {
+                session.Gate.Release();
+            }
         }
     }
 
-    // Lit les données progressivement pour permettre
-    // leur transmission en temps réel à l'interface.
     private async Task ReadOutputAsync(
         TerminalSessionId sessionId,
         StreamReader reader)
@@ -152,7 +222,9 @@ public sealed class TerminalService : ITerminalService
                 CancellationToken.None);
 
             if (count == 0)
+            {
                 break;
+            }
 
             string data = new string(buffer, 0, count);
 
