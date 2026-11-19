@@ -1,3 +1,4 @@
+
 namespace App.Core.Models;
 
 public readonly record struct DebugSessionId(Guid Value)
@@ -14,3 +15,9 @@ public sealed record DebugStartOptions(
 public sealed record Breakpoint(string Path, int Line);
 
 public enum StepKind { Over, Into, Out, Continue }
+
+public sealed record DebugStopInfo(
+    string Reason,
+    int ThreadId,
+    int? Line,
+    string? SourcePath);
