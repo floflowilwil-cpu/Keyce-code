@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/App.Application/App.Application.csproj" />
+    <Project Path="src/App.Core/App.Core.csproj" />
+    <Project Path="src/App.Desktop/App.Desktop.csproj" />
+    <Project Path="src/App.Editor/App.Editor.csproj" />
+    <Project Path="src/App.Extensions/App.Extensions.csproj" />
+    <Project Path="src/App.Integrations/App.Integrations.csproj" />
+    <Project Path="src/App.Languages/App.Languages.csproj" />
+  </Folder>
+</Solution>

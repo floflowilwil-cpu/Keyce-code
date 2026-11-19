@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\App.Core\App.Core.csproj" />
+    <ProjectReference Include="..\App.Editor\App.Editor.csproj" />
+    <ProjectReference Include="..\App.Languages\App.Languages.csproj" />
+    <ProjectReference Include="..\App.Extensions\App.Extensions.csproj" />
+    <ProjectReference Include="..\App.Integrations\App.Integrations.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
