@@ -20,40 +20,55 @@ public sealed class GitService : IGitService
         CancellationToken ct = default)
     {
         string output = await RunGitAsync(
-            ["status", "--porcelain=v1", "--branch"],
+            ["status", "--porcelain=v1", "-z", "--branch"],
             ct);
+
+        string[] entries = output.Split(
+            '\0',
+            StringSplitOptions.RemoveEmptyEntries);
 
         string branch = string.Empty;
         var files = new List<GitFileStatus>();
 
-        foreach (string line in output.Split(
-            '\n',
-            StringSplitOptions.RemoveEmptyEntries))
+        int startIndex = 0;
+
+        if (entries.Length > 0)
         {
-            if (line.StartsWith("## "))
+            string header = entries[0].TrimEnd('\r', '\n');
+
+            if (header.StartsWith("## "))
             {
-                branch = line[3..].Trim();
+                branch = header[3..];
 
                 int separator = branch.IndexOf("...");
                 if (separator >= 0)
                     branch = branch[..separator];
 
                 if (branch.StartsWith("No commits yet on "))
+                {
                     branch = branch["No commits yet on ".Length..];
+                }
 
-                continue;
+                startIndex = 1;
             }
+        }
 
-            if (line.Length < 4)
+        for (int i = startIndex; i < entries.Length; i++)
+        {
+            string entry = entries[i].TrimStart('\r', '\n');
+
+            if (entry.Length < 4)
                 continue;
 
-            string status = line[..2];
-            string path = line[3..].Trim();
+            string status = entry[..2];
+            string path = entry[3..];
 
-            if (path.Contains(" -> "))
+            // En mode -z, un renommage ou une copie est suivi
+            // d'un second champ contenant l'ancien chemin.
+            if ((status.Contains('R') || status.Contains('C')) &&
+                i + 1 < entries.Length)
             {
-                path = path[
-                    (path.LastIndexOf(" -> ", StringComparison.Ordinal) + 4)..];
+                i++;
             }
 
             files.Add(new GitFileStatus(
@@ -69,7 +84,9 @@ public sealed class GitService : IGitService
         string? path = null,
         CancellationToken ct = default)
     {
-        var arguments = new List<string> { "diff" };
+        // Compare le contenu actuel au dernier commit :
+        // inclut les modifications indexées et non indexées.
+        var arguments = new List<string> { "diff", "HEAD" };
 
         if (!string.IsNullOrWhiteSpace(path))
         {

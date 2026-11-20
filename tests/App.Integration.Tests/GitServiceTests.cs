@@ -53,6 +53,96 @@ public class GitServiceTests
     }
 
     [Fact]
+    public async Task GetStatusAsync_ShouldPreserveLeadingSpacesInFileNames()
+    {
+        string directory = CreateTemporaryDirectory();
+        const string fileName = " spaced file.txt";
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, fileName),
+                "content");
+
+            var service = CreateService(directory);
+
+            GitStatus status = await service.GetStatusAsync();
+
+            GitFileStatus file = Assert.Single(
+                status.Files,
+                file => file.Path == fileName);
+
+            Assert.Equal(GitFileState.Untracked, file.State);
+            Assert.False(file.IsStaged);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_ShouldDetectRenamedFiles()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        const string oldFileName = "tracked.txt";
+        const string newFileName = "renamed.txt";
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+
+            string oldPath = Path.Combine(directory, oldFileName);
+            string newPath = Path.Combine(directory, newFileName);
+
+            File.Move(oldPath, newPath);
+
+            await RunGitAsync(directory, "add", "-A");
+
+            var service = CreateService(directory);
+
+            GitStatus status = await service.GetStatusAsync();
+
+            GitFileStatus renamed = Assert.Single(
+                status.Files,
+                file => file.Path == newFileName);
+
+            Assert.Equal(GitFileState.Renamed, renamed.State);
+            Assert.True(renamed.IsStaged);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_WithCanceledToken_ShouldThrowOperationCanceledException()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+
+            var service = CreateService(directory);
+
+            using var cancellationTokenSource = new CancellationTokenSource();
+            cancellationTokenSource.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => service.GetStatusAsync(cancellationTokenSource.Token));
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
     public async Task DiffAsync_ShouldReturnFileChanges()
     {
         string directory = CreateTemporaryDirectory();
@@ -71,6 +161,36 @@ public class GitServiceTests
 
             Assert.Contains("-initial content", diff);
             Assert.Contains("+modified content", diff);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task DiffAsync_ShouldIncludeStagedAndUnstagedChanges()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+
+            string filePath = Path.Combine(directory, "tracked.txt");
+
+            await File.WriteAllTextAsync(filePath, "staged content");
+            await RunGitAsync(directory, "add", "tracked.txt");
+
+            await File.WriteAllTextAsync(filePath, "working tree content");
+
+            var service = CreateService(directory);
+
+            string diff = await service.DiffAsync("tracked.txt");
+
+            Assert.Contains("-initial content", diff);
+            Assert.Contains("+working tree content", diff);
+            Assert.DoesNotContain("staged content", diff);
         }
         finally
         {
@@ -132,6 +252,28 @@ public class GitServiceTests
                 "--show-current");
 
             Assert.Equal("test-branch", branch.Trim());
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task CheckoutAsync_WithUnknownBranch_ShouldThrowAppException()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+
+            var service = CreateService(directory);
+
+            AppException exception = await Assert.ThrowsAsync<AppException>(
+                () => service.CheckoutAsync("branch-that-does-not-exist"));
+
+            Assert.Equal(ErrorCode.Conflict, exception.Code);
         }
         finally
         {
