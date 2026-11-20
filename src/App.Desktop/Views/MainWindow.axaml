@@ -102,8 +102,6 @@
                          AcceptsReturn="True"
                          AcceptsTab="True"
                          TextWrapping="NoWrap"
-                         HorizontalScrollBarVisibility="Auto"
-                         VerticalScrollBarVisibility="Auto"
                          BorderThickness="0"
                          Padding="15"/>
 
