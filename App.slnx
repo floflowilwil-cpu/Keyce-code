@@ -8,4 +8,9 @@
     <Project Path="src/App.Integrations/App.Integrations.csproj" />
     <Project Path="src/App.Languages/App.Languages.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/App.Core.Tests/App.Core.Tests.csproj" />
+    <Project Path="tests/App.Editor.Tests/App.Editor.Tests.csproj" />
+    <Project Path="tests/App.Integration.Tests/App.Integration.Tests.csproj" />
+  </Folder>
 </Solution>
