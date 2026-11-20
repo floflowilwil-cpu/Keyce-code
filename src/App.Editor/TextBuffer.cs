@@ -1,4 +1,3 @@
-
 using System.Text;
 
 namespace App.Editor;
@@ -73,8 +72,6 @@ public sealed class TextBuffer
         if (length == 0)
             return string.Empty;
 
-        string addText = _add.ToString();
-
         var result = new StringBuilder(length);
 
         int documentPosition = 0;
@@ -99,15 +96,23 @@ public sealed class TextBuffer
                 int offset = overlapStart - documentPosition;
                 int count = overlapEnd - overlapStart;
 
-                string source = piece.Buffer == BufferKind.Original
-                    ? _original
-                    : addText;
-
-                result.Append(
-                    source,
-                    piece.Start + offset,
-                    count
-                );
+                if (piece.Buffer == BufferKind.Original)
+                {
+                    result.Append(
+                        _original,
+                        piece.Start + offset,
+                        count
+                    );
+                }
+                else
+                {
+                    // Copie uniquement la portion utile, sans convertir tout le tampon d'ajout.
+                    result.Append(
+                        _add,
+                        piece.Start + offset,
+                        count
+                    );
+                }
             }
 
             documentPosition = pieceEnd;
