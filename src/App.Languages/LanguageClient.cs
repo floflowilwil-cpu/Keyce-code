@@ -6,17 +6,24 @@ using Lsp = Microsoft.VisualStudio.LanguageServer.Protocol;
 
 namespace App.Languages;
 
-/// <summary>Client LSP : implémente le contrat ILanguageClient de l'équipe.</summary>
+/// <summary>Client LSP : un serveur par langage, derrière le contrat ILanguageClient.</summary>
 public sealed class LanguageClient : ILanguageClient, IDisposable
 {
-    // Serveurs configurés par langage. On en ajoutera d'autres ici (C#, JS/TS...).
+    // Serveur à lancer pour chaque langage. On ajoutera C#, JS/TS... ici.
     private static readonly Dictionary<string, (string Command, string Arguments)> Servers =
         new(StringComparer.OrdinalIgnoreCase)
         {
             ["python"] = ("python", "-m pylsp"),
         };
 
-    private readonly LanguageServerProcess _server = new();
+    // Langage d'un fichier d'après son extension.
+    private static readonly Dictionary<string, string> Extensions =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            [".py"] = "python",
+        };
+
+    private readonly Dictionary<string, LanguageServerProcess> _servers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<Uri, int> _versions = new();
 
     public event EventHandler<DiagnosticsPublishedEventArgs> DiagnosticsPublished = delegate { };
@@ -25,22 +32,35 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
 
     public async Task StartServerAsync(string languageId, string workspaceRoot, CancellationToken ct = default)
     {
+        if (_servers.ContainsKey(languageId)) return;   // déjà démarré : rien à faire
+
         if (!Servers.TryGetValue(languageId, out var config))
             throw new NotSupportedException($"Aucun serveur configuré pour le langage '{languageId}'.");
 
-        _server.Start(config.Command, config.Arguments, new Receiver(this));
-
-        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(workspaceRoot)) + Path.DirectorySeparatorChar;
-        var initParams = new Lsp.InitializeParams
+        var server = new LanguageServerProcess();
+        try
         {
-            ProcessId = Environment.ProcessId,
-            RootUri = new Uri(root),
-            Capabilities = new Lsp.ClientCapabilities()
-        };
+            server.Start(config.Command, config.Arguments, new Receiver(this));
 
-        await _server.Rpc!.InvokeWithParameterObjectAsync<Lsp.InitializeResult>(
-            "initialize", initParams, cancellationToken: ct);
-        await _server.Rpc.NotifyWithParameterObjectAsync("initialized", new { });
+            var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(workspaceRoot)) + Path.DirectorySeparatorChar;
+            var initParams = new Lsp.InitializeParams
+            {
+                ProcessId = Environment.ProcessId,
+                RootUri = new Uri(root),
+                Capabilities = new Lsp.ClientCapabilities()
+            };
+
+            await server.Rpc!.InvokeWithParameterObjectAsync<Lsp.InitializeResult>(
+                "initialize", initParams, cancellationToken: ct);
+            await server.Rpc.NotifyWithParameterObjectAsync("initialized", new { });
+
+            _servers[languageId] = server;
+        }
+        catch
+        {
+            server.Dispose();   // on ne laisse jamais un processus orphelin
+            throw;
+        }
     }
 
     public async Task<IReadOnlyList<CompletionItem>> CompletionAsync(
@@ -52,10 +72,9 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
             Position = new Lsp.Position(position.Line, position.Column)
         };
 
-        var result = await _server.Rpc!.InvokeWithParameterObjectAsync<JToken?>(
+        var result = await GetRpc(path).InvokeWithParameterObjectAsync<JToken?>(
             "textDocument/completion", p, cancellationToken: ct);
 
-        // Le serveur peut répondre par un tableau ou par un objet { items: [...] }
         JArray? items = result switch
         {
             JArray array => array,
@@ -88,10 +107,9 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
             Position = new Lsp.Position(position.Line, position.Column)
         };
 
-        var result = await _server.Rpc!.InvokeWithParameterObjectAsync<JToken?>(
+        var result = await GetRpc(path).InvokeWithParameterObjectAsync<JToken?>(
             "textDocument/definition", p, cancellationToken: ct);
 
-        // Réponse possible : un Location, une liste de Location ou une liste de LocationLink
         var nodes = new List<JObject>();
         if (result is JArray array) nodes.AddRange(array.OfType<JObject>());
         else if (result is JObject single) nodes.Add(single);
@@ -124,7 +142,7 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
                 Text = text
             }
         };
-        return _server.Rpc!.NotifyWithParameterObjectAsync("textDocument/didOpen", p);
+        return GetRpc(path).NotifyWithParameterObjectAsync("textDocument/didOpen", p);
     }
 
     /// <summary>Envoie le nouveau texte complet du document au serveur.</summary>
@@ -141,7 +159,7 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
             TextDocument = new Lsp.VersionedTextDocumentIdentifier { Uri = uri, Version = version },
             ContentChanges = [new Lsp.TextDocumentContentChangeEvent { Text = newText }]
         };
-        return _server.Rpc!.NotifyWithParameterObjectAsync("textDocument/didChange", p);
+        return GetRpc(path).NotifyWithParameterObjectAsync("textDocument/didChange", p);
     }
 
     public Task CloseDocumentAsync(string path)
@@ -153,7 +171,7 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
         {
             TextDocument = new Lsp.TextDocumentIdentifier { Uri = uri }
         };
-        return _server.Rpc!.NotifyWithParameterObjectAsync("textDocument/didClose", p);
+        return GetRpc(path).NotifyWithParameterObjectAsync("textDocument/didClose", p);
     }
 
     public async Task<string?> GetHoverAsync(string path, TextPosition position, CancellationToken ct = default)
@@ -164,21 +182,52 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
             Position = new Lsp.Position(position.Line, position.Column)
         };
 
-        var result = await _server.Rpc!.InvokeWithParameterObjectAsync<JToken?>(
+        var result = await GetRpc(path).InvokeWithParameterObjectAsync<JToken?>(
             "textDocument/hover", p, cancellationToken: ct);
         return ExtractText(result?["contents"]);
     }
 
+    /// <summary>Arrête proprement tous les serveurs démarrés.</summary>
     public async Task StopAsync()
     {
-        if (_server.Rpc is null) return;
-        await _server.Rpc.InvokeAsync<object?>("shutdown");
-        await _server.Rpc.NotifyAsync("exit");
+        foreach (var server in _servers.Values)
+        {
+            try
+            {
+                await server.Rpc!.InvokeAsync<object?>("shutdown");
+                await server.Rpc.NotifyAsync("exit");
+            }
+            catch
+            {
+                // Serveur déjà tombé : Dispose() s'occupe de le tuer.
+            }
+            server.Dispose();
+        }
+        _servers.Clear();
+        _versions.Clear();
     }
 
-    public void Dispose() => _server.Dispose();
+    public void Dispose()
+    {
+        foreach (var server in _servers.Values) server.Dispose();
+        _servers.Clear();
+    }
 
     // ---------- Outils internes ----------
+
+    /// <summary>Trouve le canal JSON-RPC du serveur qui gère ce fichier.</summary>
+    private JsonRpc GetRpc(string path)
+    {
+        var ext = Path.GetExtension(path);
+        if (!Extensions.TryGetValue(ext, out var languageId))
+            throw new NotSupportedException($"Type de fichier non pris en charge : '{ext}'.");
+
+        if (_servers.TryGetValue(languageId, out var server) && server.Rpc is { } rpc)
+            return rpc;
+
+        throw new InvalidOperationException(
+            $"Le serveur '{languageId}' n'est pas démarré : appelle StartServerAsync d'abord.");
+    }
 
     private static Uri ToUri(string path) => new(Path.GetFullPath(path));
 
@@ -211,7 +260,7 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
     private void Raise(string path, IReadOnlyList<Diagnostic> diagnostics)
         => DiagnosticsPublished(this, new DiagnosticsPublishedEventArgs(path, diagnostics));
 
-    // Objet qui reçoit les messages envoyés par le serveur.
+    // Objet qui reçoit les messages envoyés par les serveurs.
     private sealed class Receiver(LanguageClient owner)
     {
         [JsonRpcMethod("textDocument/publishDiagnostics", UseSingleObjectParameterDeserialization = true)]
