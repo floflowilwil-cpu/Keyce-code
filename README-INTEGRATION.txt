@@ -1,37 +1,23 @@
-KEYCE CODE — PATCH 1 : MODELES DE SELECTION ET MULTI-CURSEURS
+PATCH 04 — COMMANDES AVANCÉES SUR LES LIGNES
 
-Contenu
--------
-1. src/App.Core/Models/SelectionModels.cs
-   - Selection : ancre, extrémité active, sens et plage normalisée.
-   - Caret : position active et ancre de sélection.
-   - CaretSet : ensemble immuable, curseur principal, ajout/suppression.
+Fichiers à copier :
+- src/App.Editor/Editing/EditorLineCommandService.cs
+- tests/App.Editor.Tests/EditorLineCommandServiceTests.cs
 
-2. tests/App.Editor.Tests/SelectionModelsTests.cs
-   - Tests xUnit des invariants et opérations de base.
+Ce patch ajoute un service dédié :
+- CommentLines(documentId, prefix = "//")
+- UncommentLines(documentId, prefix = "//")
+- DuplicateLines(documentId)
+- MoveLinesUp(documentId)
+- MoveLinesDown(documentId)
 
-Installation
-------------
-Copier les deux fichiers dans les chemins correspondants du dépôt.
-Aucune modification de .csproj n'est nécessaire : les projets SDK incluent
-automatiquement les fichiers .cs du dossier.
+Intégration :
+1. Copier les deux fichiers aux chemins indiqués.
+2. Vérifier que App.Editor.Tests référence App.Editor et App.Core comme les tests existants.
+3. Exécuter : dotnet test
+4. Envoyer le résultat complet avant de poursuivre.
 
-Depuis la racine du dépôt :
-    dotnet test tests/App.Editor.Tests/App.Editor.Tests.csproj
-
-Conventions
------------
-- Positions en base 0, colonnes UTF-16, cohérentes avec TextModel et LSP.
-- L'ordre des curseurs est conservé ; PrimaryIndex identifie le curseur principal.
-- Les positions actives dupliquées sont refusées pour éviter une double édition.
-- Les sélections qui se chevauchent sont refusées ; celles qui se touchent sont permises.
-- CaretSet est immuable : chaque opération retourne un nouvel ensemble.
-- Les positions sont validées pour être non négatives, mais leurs limites par rapport
-  au document doivent être vérifiées par le service qui connaît le TextModel.
-
-Important
----------
-Ce patch constitue la première couche de modèles. Il n'altère pas encore
-IEditorService, Document, Undo/Redo ni le moteur TextBuffer.
-La prochaine étape sera l'intégration de CaretSet au niveau du service et
-l'application atomique de plusieurs TextEdit dans un seul groupe Undo.
+Important :
+- Le service est séparé d'EditorCommandService pour ne pas casser son API existante.
+- Les modifications passent par IEditorService.ApplyEdits, donc elles utilisent l'historique du document.
+- Les déplacements de lignes remplacent le contenu complet du document en une opération Undo.
