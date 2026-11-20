@@ -18,13 +18,12 @@ public sealed class Document
         public DateTimeOffset LastEditTime { get; set; } = time;
     }
 
-    /// <summary>Pause maximale entre deux frappes pour qu'elles restent dans le même pas d'annulation.</summary>
     public static readonly TimeSpan TypingGroupWindow = TimeSpan.FromSeconds(1);
 
     private readonly TimeProvider _time;
     private readonly List<UndoGroup> _undo = new();
     private readonly List<UndoGroup> _redo = new();
-    private int _savedDepth; // taille de la pile d'annulation au dernier enregistrement ; -1 = état enregistré inatteignable
+    private int _savedDepth;
     private bool _breakCoalescing;
 
     public Document(DocumentId id, string? path, string text, TimeProvider? time = null)
@@ -43,17 +42,13 @@ public sealed class Document
     public string LanguageId { get; }
     public LineEnding LineEnding { get; set; }
     public TextModel Text { get; }
-
-    /// <summary>Numéro de version, incrémenté à chaque modification (utile pour les notifications LSP).</summary>
     public int Version { get; private set; }
-
     public bool IsDirty => _savedDepth != _undo.Count;
     public bool CanUndo => _undo.Count > 0;
     public bool CanRedo => _redo.Count > 0;
 
     public DocumentInfo ToInfo() => new(Id, Path, LanguageId, IsDirty);
 
-    /// <summary>Texte complet avec la fin de ligne d'origine, prêt à être écrit sur le disque.</summary>
     public string GetTextForSave()
     {
         var text = Text.GetText();
@@ -66,30 +61,86 @@ public sealed class Document
         _breakCoalescing = true;
     }
 
-    /// <summary>
-    /// Applique une modification. Retourne la modification effectivement appliquée (plage ramenée aux limites
-    /// du document, fins de ligne normalisées), ou null si elle ne change rien.
-    /// </summary>
     public TextEdit? Apply(TextEdit edit)
     {
         ArgumentNullException.ThrowIfNull(edit);
-        int start = Text.GetOffset(edit.Range.Start);
-        int end = Text.GetOffset(edit.Range.End);
-        if (end < start)
-            throw new AppException(ErrorCode.InvalidArgument, "La fin de la plage précède son début.");
+        var applied = ApplyCore(edit, out var change);
+        if (applied is null) return null;
 
-        string removed = Text.GetText(start, end - start);
-        string inserted = TextModel.NormalizeNewLines(edit.NewText ?? string.Empty);
-        if (removed.Length == 0 && inserted.Length == 0) return null;
-
-        var applied = new TextEdit(new TextRange(Text.GetPosition(start), Text.GetPosition(end)), inserted);
-        Text.Replace(start, end - start, inserted);
-        Version++;
-        Record(new Change(start, removed, inserted));
+        Record(change!);
         return applied;
     }
 
-    /// <summary>Annule le dernier pas. Retourne les modifications appliquées (dans l'ordre), ou null s'il n'y a rien à annuler.</summary>
+    /// <summary>
+    /// Applique des modifications dont les plages sont toutes exprimées dans le texte
+    /// avant transaction. Les plages qui se chevauchent sont rejetées. L'application
+    /// se fait de droite à gauche afin de préserver les offsets d'origine.
+    /// </summary>
+    public IReadOnlyList<TextEdit> ApplyBatch(IReadOnlyList<TextEdit> edits)
+    {
+        ArgumentNullException.ThrowIfNull(edits);
+        if (edits.Count == 0) return Array.Empty<TextEdit>();
+
+        var prepared = new List<(int Start, int End, string NewText)>(edits.Count);
+        foreach (var edit in edits)
+        {
+            ArgumentNullException.ThrowIfNull(edit);
+            int start = Text.GetOffset(edit.Range.Start);
+            int end = Text.GetOffset(edit.Range.End);
+            if (end < start)
+                throw new AppException(ErrorCode.InvalidArgument, "La fin de la plage précède son début.");
+
+            prepared.Add((start, end, TextModel.NormalizeNewLines(edit.NewText ?? string.Empty)));
+        }
+
+        prepared.Sort((a, b) =>
+        {
+            int byStartDescending = b.Start.CompareTo(a.Start);
+            return byStartDescending != 0 ? byStartDescending : b.End.CompareTo(a.End);
+        });
+
+        for (int i = 1; i < prepared.Count; i++)
+        {
+            var previous = prepared[i - 1];
+            var current = prepared[i];
+
+            // Une insertion à l'intérieur d'une plage, deux insertions au même offset
+            // ou deux plages qui se recouvrent rendraient le résultat ambigu.
+            if (current.End > previous.Start ||
+                (current.Start == current.End && previous.Start == previous.End &&
+                 current.Start == previous.Start))
+            {
+                throw new AppException(ErrorCode.InvalidArgument,
+                    "Les modifications d'un même lot ne doivent pas se chevaucher.");
+            }
+        }
+
+        var group = new UndoGroup(isTyping: false, _time.GetUtcNow());
+        var applied = new List<TextEdit>(prepared.Count);
+
+        foreach (var item in prepared)
+        {
+            string removed = Text.GetText(item.Start, item.End - item.Start);
+            if (removed.Length == 0 && item.NewText.Length == 0)
+                continue;
+
+            var range = new TextRange(Text.GetPosition(item.Start), Text.GetPosition(item.End));
+            Text.Replace(item.Start, item.End - item.Start, item.NewText);
+            Version++;
+
+            group.Changes.Add(new Change(item.Start, removed, item.NewText));
+            applied.Add(new TextEdit(range, item.NewText));
+        }
+
+        if (group.Changes.Count == 0)
+            return Array.Empty<TextEdit>();
+
+        ClearRedoBranch();
+        _undo.Add(group);
+        _breakCoalescing = true;
+        return applied;
+    }
+
     public IReadOnlyList<TextEdit>? Undo()
     {
         if (_undo.Count == 0) return null;
@@ -110,7 +161,6 @@ public sealed class Document
         return edits;
     }
 
-    /// <summary>Rétablit le dernier pas annulé. Retourne les modifications appliquées, ou null s'il n'y a rien à rétablir.</summary>
     public IReadOnlyList<TextEdit>? Redo()
     {
         if (_redo.Count == 0) return null;
@@ -130,13 +180,31 @@ public sealed class Document
         return edits;
     }
 
+    private TextEdit? ApplyCore(TextEdit edit, out Change? change)
+    {
+        int start = Text.GetOffset(edit.Range.Start);
+        int end = Text.GetOffset(edit.Range.End);
+        if (end < start)
+            throw new AppException(ErrorCode.InvalidArgument, "La fin de la plage précède son début.");
+
+        string removed = Text.GetText(start, end - start);
+        string inserted = TextModel.NormalizeNewLines(edit.NewText ?? string.Empty);
+        if (removed.Length == 0 && inserted.Length == 0)
+        {
+            change = null;
+            return null;
+        }
+
+        var applied = new TextEdit(new TextRange(Text.GetPosition(start), Text.GetPosition(end)), inserted);
+        Text.Replace(start, end - start, inserted);
+        Version++;
+        change = new Change(start, removed, inserted);
+        return applied;
+    }
+
     private void Record(Change change)
     {
-        if (_redo.Count > 0)
-        {
-            if (_savedDepth > _undo.Count) _savedDepth = -1; // l'état enregistré se trouvait dans la branche rétablissable perdue
-            _redo.Clear();
-        }
+        ClearRedoBranch();
 
         var now = _time.GetUtcNow();
         bool isTyping = change.Removed.Length == 0 && change.Inserted.Length > 0 && change.Inserted.IndexOf('\n') < 0;
@@ -160,5 +228,12 @@ public sealed class Document
         group.Changes.Add(change);
         _undo.Add(group);
         _breakCoalescing = false;
+    }
+
+    private void ClearRedoBranch()
+    {
+        if (_redo.Count == 0) return;
+        if (_savedDepth > _undo.Count) _savedDepth = -1;
+        _redo.Clear();
     }
 }
