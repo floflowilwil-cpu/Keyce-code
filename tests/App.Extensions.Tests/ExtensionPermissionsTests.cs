@@ -129,8 +129,16 @@ public sealed class ExtensionPermissionsTests : IDisposable
             Task.FromResult(new GitStatus("main", []));
         public Task<string> DiffAsync(string? path = null, CancellationToken ct = default) =>
             Task.FromResult(string.Empty);
+        public Task StageAsync(string path, CancellationToken ct = default) => Task.CompletedTask;
+        public Task UnstageAsync(string path, CancellationToken ct = default) => Task.CompletedTask;
         public Task CommitAsync(string message, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<IReadOnlyList<GitBranch>> GetBranchesAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<GitBranch>>([]);
+        public Task CreateBranchAsync(string branch, bool checkout = true, CancellationToken ct = default) =>
+            Task.CompletedTask;
         public Task CheckoutAsync(string branch, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<IReadOnlyList<GitCommitInfo>> GetLogAsync(int maxCount = 50, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<GitCommitInfo>>([]);
         public Task PushAsync(CancellationToken ct = default) => Task.CompletedTask;
         public Task PullAsync(CancellationToken ct = default) => Task.CompletedTask;
     }

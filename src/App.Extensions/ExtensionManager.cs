@@ -11,7 +11,7 @@ namespace App.Extensions;
 
 public sealed partial class ExtensionManager : IExtensionService
 {
-    private const string ManifestFileName = "extension.json";
+    internal const string ManifestFileName = "extension.json";
     private const string StateFileName = "state.json";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -27,6 +27,7 @@ public sealed partial class ExtensionManager : IExtensionService
     private readonly string _root;
     private readonly IGitService? _git;
     private readonly IWorkspaceService? _workspace;
+    private readonly Version _appVersion;
     private readonly Dictionary<string, ExtensionInfo> _extensions =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly object _lock = new();
@@ -43,7 +44,8 @@ public sealed partial class ExtensionManager : IExtensionService
         string extensionsRoot,
         ICommandService? commands = null,
         IGitService? git = null,
-        IWorkspaceService? workspace = null)
+        IWorkspaceService? workspace = null,
+        Version? appVersion = null)
     {
         if (string.IsNullOrWhiteSpace(extensionsRoot))
             throw new ArgumentException(
@@ -52,6 +54,7 @@ public sealed partial class ExtensionManager : IExtensionService
         _root = extensionsRoot;
         _git = git;
         _workspace = workspace;
+        _appVersion = appVersion ?? new Version(1, 0, 0);
         Commands = commands ?? new CommandService();
     }
 
@@ -138,17 +141,8 @@ public sealed partial class ExtensionManager : IExtensionService
     public async Task<ExtensionInfo> InstallAsync(
         string sourceFolder, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(sourceFolder))
-            throw new AppException(
-                ErrorCode.InvalidArgument, "Le dossier source est obligatoire.");
-
-        string manifestPath = Path.Combine(sourceFolder, ManifestFileName);
-        if (!File.Exists(manifestPath))
-            throw new AppException(
-                ErrorCode.NotFound,
-                $"{ManifestFileName} est introuvable dans : {sourceFolder}");
-
-        ExtensionManifest manifest = await ReadManifestAsync(manifestPath, ct);
+        ExtensionManifest manifest = await ReadSourceManifestAsync(sourceFolder, ct);
+        EnsureCompatibleWithApp(manifest);
 
         ExtensionInfo info;
         await _operationGate.WaitAsync(ct);
@@ -160,6 +154,8 @@ public sealed partial class ExtensionManager : IExtensionService
                     throw new AppException(
                         ErrorCode.AlreadyExists,
                         $"L'extension '{manifest.Id}' est déjà installée.");
+
+                EnsureDependencies_NoLock(manifest, requireActive: false);
             }
 
             string target = Path.Combine(_root, manifest.Id);
@@ -179,6 +175,69 @@ public sealed partial class ExtensionManager : IExtensionService
         return info;
     }
 
+    public async Task<ExtensionInfo> UpdateAsync(
+        string sourceFolder, CancellationToken ct = default)
+    {
+        ExtensionManifest manifest = await ReadSourceManifestAsync(sourceFolder, ct);
+        EnsureCompatibleWithApp(manifest);
+
+        ExtensionInfo updated;
+        await _operationGate.WaitAsync(ct);
+        try
+        {
+            ExtensionInfo current = GetExtension(manifest.Id);
+
+            if (Version.Parse(manifest.Version) <= Version.Parse(current.Manifest.Version))
+            {
+                throw new AppException(
+                    ErrorCode.Conflict,
+                    $"La version {manifest.Version} n'est pas plus récente que la version installée ({current.Manifest.Version}).");
+            }
+
+            lock (_lock)
+            {
+                EnsureDependencies_NoLock(
+                    manifest,
+                    requireActive: current.State == ExtensionState.Active);
+            }
+
+            if (current.State == ExtensionState.Active)
+                await StopAsync(manifest.Id, ct);
+
+            if (Directory.Exists(current.InstallPath))
+                Directory.Delete(current.InstallPath, recursive: true);
+
+            CopyDirectory(sourceFolder, current.InstallPath);
+
+            updated = new ExtensionInfo(manifest, current.State, current.InstallPath);
+
+            if (current.State == ExtensionState.Active)
+            {
+                try
+                {
+                    await StartAsync(updated, ct);
+                }
+                catch
+                {
+                    lock (_lock)
+                        _extensions[manifest.Id] = updated with { State = ExtensionState.Installed };
+                    await SaveStateAsync(CancellationToken.None);
+                    throw;
+                }
+            }
+
+            lock (_lock)
+                _extensions[manifest.Id] = updated;
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+
+        Raise(ExtensionChangeKind.Updated, updated);
+        return updated;
+    }
+
     public async Task UninstallAsync(string extensionId, CancellationToken ct = default)
     {
         ExtensionInfo info;
@@ -186,6 +245,9 @@ public sealed partial class ExtensionManager : IExtensionService
         try
         {
             info = GetExtension(extensionId);
+            lock (_lock)
+                EnsureNoDependents_NoLock(info.Manifest.Id, activeOnly: false, "désinstaller");
+
             await StopAsync(info.Manifest.Id, ct);
 
             lock (_lock)
@@ -214,6 +276,10 @@ public sealed partial class ExtensionManager : IExtensionService
             if (current.State == ExtensionState.Active)
                 return;
 
+            EnsureCompatibleWithApp(current.Manifest);
+            lock (_lock)
+                EnsureDependencies_NoLock(current.Manifest, requireActive: true);
+
             // Si le code de l'extension échoue, elle reste "Installed".
             await StartAsync(current, ct);
 
@@ -240,6 +306,9 @@ public sealed partial class ExtensionManager : IExtensionService
             ExtensionInfo current = GetExtension(extensionId);
             if (current.State == ExtensionState.Installed)
                 return;
+
+            lock (_lock)
+                EnsureNoDependents_NoLock(current.Manifest.Id, activeOnly: true, "désactiver");
 
             await StopAsync(current.Manifest.Id, ct);
 
@@ -386,7 +455,79 @@ public sealed partial class ExtensionManager : IExtensionService
         return (IExtension)Activator.CreateInstance(type)!;
     }
 
-    private static async Task<ExtensionManifest> ReadManifestAsync(
+    private void EnsureCompatibleWithApp(ExtensionManifest manifest)
+    {
+        if (string.IsNullOrWhiteSpace(manifest.MinAppVersion))
+            return;
+
+        Version required = Version.Parse(manifest.MinAppVersion);
+        if (_appVersion < required)
+        {
+            throw new AppException(
+                ErrorCode.Conflict,
+                $"L'extension '{manifest.Id}' requiert au moins la version {manifest.MinAppVersion} de l'application (actuelle : {_appVersion}).");
+        }
+    }
+
+    private void EnsureDependencies_NoLock(ExtensionManifest manifest, bool requireActive)
+    {
+        foreach (string dependencyId in manifest.Dependencies ?? [])
+        {
+            if (!_extensions.TryGetValue(dependencyId, out ExtensionInfo? dependency))
+            {
+                throw new AppException(
+                    ErrorCode.Conflict,
+                    $"L'extension '{manifest.Id}' dépend de '{dependencyId}', qui n'est pas installée.");
+            }
+
+            if (requireActive && dependency.State != ExtensionState.Active)
+            {
+                throw new AppException(
+                    ErrorCode.Conflict,
+                    $"L'extension '{manifest.Id}' dépend de '{dependencyId}', qui n'est pas activée.");
+            }
+        }
+    }
+
+    private void EnsureNoDependents_NoLock(
+        string extensionId, bool activeOnly, string actionLabel)
+    {
+        foreach (ExtensionInfo other in _extensions.Values)
+        {
+            if (string.Equals(other.Manifest.Id, extensionId, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (activeOnly && other.State != ExtensionState.Active)
+                continue;
+
+            if ((other.Manifest.Dependencies ?? []).Contains(
+                extensionId, StringComparer.OrdinalIgnoreCase))
+            {
+                string stateText = activeOnly ? "l'extension active " : string.Empty;
+                throw new AppException(
+                    ErrorCode.Conflict,
+                    $"Impossible de {actionLabel} '{extensionId}' car {stateText}'{other.Manifest.Id}' en dépend.");
+            }
+        }
+    }
+
+    private static Task<ExtensionManifest> ReadSourceManifestAsync(
+        string sourceFolder, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(sourceFolder))
+            throw new AppException(
+                ErrorCode.InvalidArgument, "Le dossier source est obligatoire.");
+
+        string manifestPath = Path.Combine(sourceFolder, ManifestFileName);
+        if (!File.Exists(manifestPath))
+            throw new AppException(
+                ErrorCode.NotFound,
+                $"{ManifestFileName} est introuvable dans : {sourceFolder}");
+
+        return ReadManifestAsync(manifestPath, ct);
+    }
+
+    internal static async Task<ExtensionManifest> ReadManifestAsync(
         string path, CancellationToken ct)
     {
         try
@@ -410,6 +551,19 @@ public sealed partial class ExtensionManager : IExtensionService
                     ErrorCode.InvalidArgument,
                     "Identifiant invalide : lettres, chiffres, '.', '-' et '_' uniquement.");
 
+            if (!Version.TryParse(manifest.Version, out _))
+                throw new AppException(
+                    ErrorCode.InvalidArgument,
+                    $"Version d'extension invalide : '{manifest.Version}'.");
+
+            if (!string.IsNullOrWhiteSpace(manifest.MinAppVersion)
+                && !Version.TryParse(manifest.MinAppVersion, out _))
+            {
+                throw new AppException(
+                    ErrorCode.InvalidArgument,
+                    $"minAppVersion invalide : '{manifest.MinAppVersion}'.");
+            }
+
             IReadOnlyList<string> permissions = manifest.Permissions ?? [];
             foreach (string permission in permissions)
             {
@@ -425,7 +579,8 @@ public sealed partial class ExtensionManager : IExtensionService
             return manifest with
             {
                 Description = manifest.Description ?? string.Empty,
-                Permissions = permissions
+                Permissions = permissions,
+                Dependencies = manifest.Dependencies ?? []
             };
         }
         catch (JsonException ex)

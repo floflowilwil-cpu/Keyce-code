@@ -9,6 +9,7 @@ public interface IExtensionService
 
     Task LoadInstalledAsync(CancellationToken ct = default);
     Task<ExtensionInfo> InstallAsync(string sourceFolder, CancellationToken ct = default);
+    Task<ExtensionInfo> UpdateAsync(string sourceFolder, CancellationToken ct = default);
     Task UninstallAsync(string extensionId, CancellationToken ct = default);
     Task ActivateAsync(string extensionId, CancellationToken ct = default);
     Task DeactivateAsync(string extensionId, CancellationToken ct = default);
