@@ -455,6 +455,406 @@ public class GitServiceTests
         }
     }
 
+    [Fact]
+    public async Task StageAsync_ShouldStageModifiedAndUntrackedFiles()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, "tracked.txt"),
+                "modified content");
+
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, "new.txt"),
+                "new content");
+
+            var service = CreateService(directory);
+
+            await service.StageAsync("tracked.txt");
+            await service.StageAsync("new.txt");
+
+            GitStatus status = await service.GetStatusAsync();
+
+            GitFileStatus modified = Assert.Single(
+                status.Files,
+                file => file.Path == "tracked.txt");
+
+            Assert.Equal(GitFileState.Modified, modified.State);
+            Assert.True(modified.IsStaged);
+
+            GitFileStatus added = Assert.Single(
+                status.Files,
+                file => file.Path == "new.txt");
+
+            Assert.Equal(GitFileState.Added, added.State);
+            Assert.True(added.IsStaged);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task UnstageAsync_ShouldUnstageStagedFile()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, "tracked.txt"),
+                "modified content");
+
+            await RunGitAsync(directory, "add", "tracked.txt");
+
+            var service = CreateService(directory);
+
+            await service.UnstageAsync("tracked.txt");
+
+            GitStatus status = await service.GetStatusAsync();
+
+            GitFileStatus unstaged = Assert.Single(
+                status.Files,
+                file => file.Path == "tracked.txt");
+
+            Assert.Equal(GitFileState.Modified, unstaged.State);
+            Assert.False(unstaged.IsStaged);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task StageAsync_WithEmptyPath_ShouldThrowAppException()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+
+            var service = CreateService(directory);
+
+            AppException exception = await Assert.ThrowsAsync<AppException>(
+                () => service.StageAsync(" "));
+
+            Assert.Equal(ErrorCode.InvalidArgument, exception.Code);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task GetBranchesAsync_ShouldReturnBranchesAndMarkCurrent()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+            await RunGitAsync(directory, "branch", "feature-test");
+
+            var service = CreateService(directory);
+
+            IReadOnlyList<GitBranch> branches = await service.GetBranchesAsync();
+
+            Assert.Equal(2, branches.Count);
+
+            GitBranch mainBranch = Assert.Single(branches, b => b.Name == "main");
+            Assert.True(mainBranch.IsCurrent);
+
+            GitBranch featureBranch = Assert.Single(branches, b => b.Name == "feature-test");
+            Assert.False(featureBranch.IsCurrent);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task CreateBranchAsync_WithCheckout_ShouldCreateAndSwitchBranch()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+
+            var service = CreateService(directory);
+
+            await service.CreateBranchAsync("feature-new");
+
+            string branch = await RunGitAsync(
+                directory,
+                "branch",
+                "--show-current");
+
+            Assert.Equal("feature-new", branch.Trim());
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task CreateBranchAsync_WithoutCheckout_ShouldKeepCurrentBranch()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+
+            var service = CreateService(directory);
+
+            await service.CreateBranchAsync("feature-no-checkout", checkout: false);
+
+            string branch = await RunGitAsync(
+                directory,
+                "branch",
+                "--show-current");
+
+            Assert.Equal("main", branch.Trim());
+
+            IReadOnlyList<GitBranch> branches = await service.GetBranchesAsync();
+            GitBranch created = Assert.Single(branches, b => b.Name == "feature-no-checkout");
+            Assert.False(created.IsCurrent);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task GetLogAsync_ShouldReturnCommitHistoryInOrder()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, "tracked.txt"),
+                "second content");
+            await RunGitAsync(directory, "add", "tracked.txt");
+            await RunGitAsync(directory, "commit", "-m", "Second commit");
+
+            var service = CreateService(directory);
+
+            IReadOnlyList<GitCommitInfo> commits = await service.GetLogAsync(maxCount: 10);
+
+            Assert.Equal(2, commits.Count);
+
+            Assert.Equal("Second commit", commits[0].Message);
+            Assert.Equal("Git Tests", commits[0].Author);
+            Assert.False(string.IsNullOrWhiteSpace(commits[0].Hash));
+            Assert.NotEqual(default, commits[0].Date);
+
+            Assert.Equal("Initial commit", commits[1].Message);
+
+            IReadOnlyList<GitCommitInfo> latest = await service.GetLogAsync(maxCount: 1);
+            GitCommitInfo single = Assert.Single(latest);
+            Assert.Equal("Second commit", single.Message);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task GetLogAsync_WithInvalidMaxCount_ShouldThrowAppException()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+
+            var service = CreateService(directory);
+
+            AppException exception = await Assert.ThrowsAsync<AppException>(
+                () => service.GetLogAsync(0));
+
+            Assert.Equal(ErrorCode.InvalidArgument, exception.Code);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task InitAsync_ShouldInitializeRepositoryWithInitialBranch()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            var service = CreateService(directory);
+
+            await service.InitAsync("main");
+
+            Assert.True(Directory.Exists(Path.Combine(directory, ".git")));
+
+            GitStatus status = await service.GetStatusAsync();
+            Assert.Equal("main", status.Branch);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task MergeAsync_WithoutConflicts_ShouldMergeBranchCleanly()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+            await RunGitAsync(directory, "switch", "-c", "feature");
+
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, "feature.txt"),
+                "feature content");
+            await RunGitAsync(directory, "add", "feature.txt");
+            await RunGitAsync(directory, "commit", "-m", "Feature commit");
+            await RunGitAsync(directory, "switch", "main");
+
+            var service = CreateService(directory);
+
+            GitMergeResult result = await service.MergeAsync("feature");
+
+            Assert.True(result.Succeeded);
+            Assert.Empty(result.ConflictedFiles);
+            Assert.Equal(
+                "feature content",
+                await File.ReadAllTextAsync(Path.Combine(directory, "feature.txt")));
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task MergeAsync_WithConflicts_ShouldReturnConflictedFiles()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+
+            await RunGitAsync(directory, "switch", "-c", "feature");
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, "tracked.txt"),
+                "feature change");
+            await RunGitAsync(directory, "add", "tracked.txt");
+            await RunGitAsync(directory, "commit", "-m", "Feature change");
+
+            await RunGitAsync(directory, "switch", "main");
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, "tracked.txt"),
+                "main change");
+            await RunGitAsync(directory, "add", "tracked.txt");
+            await RunGitAsync(directory, "commit", "-m", "Main change");
+
+            var service = CreateService(directory);
+
+            GitMergeResult result = await service.MergeAsync("feature");
+
+            Assert.False(result.Succeeded);
+            Assert.Equal("tracked.txt", Assert.Single(result.ConflictedFiles));
+            Assert.Equal("tracked.txt", Assert.Single(await service.GetConflictsAsync()));
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task AbortMergeAsync_ShouldRestoreCleanWorkingTreeAfterConflict()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+
+            await RunGitAsync(directory, "switch", "-c", "feature");
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, "tracked.txt"),
+                "feature change");
+            await RunGitAsync(directory, "add", "tracked.txt");
+            await RunGitAsync(directory, "commit", "-m", "Feature change");
+
+            await RunGitAsync(directory, "switch", "main");
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, "tracked.txt"),
+                "main change");
+            await RunGitAsync(directory, "add", "tracked.txt");
+            await RunGitAsync(directory, "commit", "-m", "Main change");
+
+            var service = CreateService(directory);
+
+            GitMergeResult result = await service.MergeAsync("feature");
+            Assert.False(result.Succeeded);
+
+            await service.AbortMergeAsync();
+
+            Assert.Empty(await service.GetConflictsAsync());
+            Assert.Equal(
+                "main change",
+                await File.ReadAllTextAsync(Path.Combine(directory, "tracked.txt")));
+            Assert.Empty((await service.GetStatusAsync()).Files);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task MergeAsync_WithUnknownBranch_ShouldThrowAppException()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+
+            var service = CreateService(directory);
+
+            AppException exception = await Assert.ThrowsAsync<AppException>(
+                () => service.MergeAsync("branch-does-not-exist"));
+
+            Assert.Equal(ErrorCode.Conflict, exception.Code);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
     private static GitService CreateService(string directory)
     {
         var workspace = new FakeWorkspaceService(
