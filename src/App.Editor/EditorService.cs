@@ -7,11 +7,8 @@ using App.Editor.Documents;
 namespace App.Editor;
 
 /// <summary>
-/// Implémentation de <see cref="IEditorService"/>.
-/// Convention de <see cref="DocumentChanged"/> : les modifications d'un événement sont séquentielles —
-/// chaque plage est exprimée dans l'état du document juste avant d'appliquer cette modification
-/// (c'est ce qu'attend un didChange incrémental du LSP). L'événement est levé après la modification,
-/// sur le thread de l'appelant.
+/// Service des documents. Les lots d'éditions sont fournis dans l'état initial et
+/// appliqués de droite à gauche ; DocumentChanged contient l'ordre réel d'application.
 /// </summary>
 public sealed class EditorService : IEditorService
 {
@@ -20,6 +17,7 @@ public sealed class EditorService : IEditorService
     private readonly ConcurrentDictionary<DocumentId, Document> _documents = new();
     private readonly ConcurrentDictionary<string, DocumentId> _byPath =
         new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<DocumentId, CaretSet> _caretSets = new();
 
     public EditorService(IFileService files, TimeProvider? time = null)
     {
@@ -28,8 +26,6 @@ public sealed class EditorService : IEditorService
     }
 
     public event EventHandler<DocumentChangedEventArgs> DocumentChanged = delegate { };
-
-    /// <summary>Levé quand l'état d'un document change (modifié / enregistré) — pour le point « • » des onglets.</summary>
     public event EventHandler<DocumentInfo> DocumentStateChanged = delegate { };
 
     public async Task<DocumentInfo> OpenDocumentAsync(string path, CancellationToken ct = default)
@@ -44,10 +40,12 @@ public sealed class EditorService : IEditorService
         var doc = new Document(DocumentId.New(), full, text, _time);
 
         _documents[doc.Id] = doc;
+        _caretSets.TryAdd(doc.Id, CaretSet.Single(new TextPosition(0, 0)));
+
         if (!_byPath.TryAdd(full, doc.Id))
         {
-            // Ouverture concurrente du même fichier : on garde le premier document.
             _documents.TryRemove(doc.Id, out _);
+            _caretSets.TryRemove(doc.Id, out _);
             if (TryGetByPath(full, out var winner)) return Snapshot(winner);
         }
         return Snapshot(doc);
@@ -70,8 +68,46 @@ public sealed class EditorService : IEditorService
             applied = doc.Apply(edit);
             changedState = doc.IsDirty != wasDirty ? doc.ToInfo() : null;
         }
-        if (applied is null) return;
-        Raise(id, [applied], changedState);
+        if (applied is not null) Raise(id, [applied], changedState);
+    }
+
+    public void ApplyEdits(DocumentId id, IReadOnlyList<TextEdit> edits)
+    {
+        ArgumentNullException.ThrowIfNull(edits);
+        var doc = Get(id);
+        IReadOnlyList<TextEdit> applied;
+        DocumentInfo? changedState;
+        lock (doc.SyncRoot)
+        {
+            bool wasDirty = doc.IsDirty;
+            applied = doc.ApplyBatch(edits);
+            changedState = doc.IsDirty != wasDirty ? doc.ToInfo() : null;
+        }
+        if (applied.Count > 0) Raise(id, applied, changedState);
+    }
+
+    public CaretSet GetCaretSet(DocumentId id)
+    {
+        _ = Get(id);
+        return _caretSets.TryGetValue(id, out var carets)
+            ? carets
+            : CaretSet.Single(new TextPosition(0, 0));
+    }
+
+    public void SetCaretSet(DocumentId id, CaretSet carets)
+    {
+        ArgumentNullException.ThrowIfNull(carets);
+        var doc = Get(id);
+
+        lock (doc.SyncRoot)
+        {
+            foreach (var caret in carets.Carets)
+            {
+                ValidateDocumentPosition(doc.Text, caret.Position);
+                ValidateDocumentPosition(doc.Text, caret.Anchor);
+            }
+            _caretSets[id] = carets;
+        }
     }
 
     public void Undo(DocumentId id)
@@ -121,7 +157,6 @@ public sealed class EditorService : IEditorService
         DocumentInfo? changedState = null;
         lock (doc.SyncRoot)
         {
-            // Si l'utilisateur a tapé pendant l'écriture, le document reste « modifié ».
             if (doc.Version == version)
             {
                 bool wasDirty = doc.IsDirty;
@@ -132,15 +167,14 @@ public sealed class EditorService : IEditorService
         if (changedState is not null) DocumentStateChanged(this, changedState);
     }
 
-    /// <summary>Ferme un document (ne sauvegarde rien). Retourne false s'il n'était pas ouvert.</summary>
     public bool CloseDocument(DocumentId id)
     {
         if (!_documents.TryRemove(id, out var doc)) return false;
+        _caretSets.TryRemove(id, out _);
         if (doc.Path is not null) _byPath.TryRemove(doc.Path, out _);
         return true;
     }
 
-    /// <summary>Accès direct au document (lecture des lignes pour l'affichage, etc.). À utiliser sur le thread UI.</summary>
     public Document GetDocument(DocumentId id) => Get(id);
 
     public DocumentInfo GetInfo(DocumentId id)
@@ -151,6 +185,13 @@ public sealed class EditorService : IEditorService
 
     public IReadOnlyList<DocumentInfo> GetOpenDocuments() =>
         _documents.Values.Select(Snapshot).ToList();
+
+    private static void ValidateDocumentPosition(TextModel text, TextPosition position)
+    {
+        if (position.Line < 0 || position.Line >= text.LineCount ||
+            position.Column < 0 || position.Column > text.GetLineLength(position.Line))
+            throw new AppException(ErrorCode.InvalidArgument, $"Position de curseur hors document : {position}.");
+    }
 
     private void Raise(DocumentId id, IReadOnlyList<TextEdit> edits, DocumentInfo? changedState)
     {
