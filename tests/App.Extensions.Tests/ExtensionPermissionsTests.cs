@@ -125,6 +125,8 @@ public sealed class ExtensionPermissionsTests : IDisposable
 
     private sealed class FakeGitService : IGitService
     {
+        public Task InitAsync(string initialBranch = "main", CancellationToken ct = default) =>
+            Task.CompletedTask;
         public Task<GitStatus> GetStatusAsync(CancellationToken ct = default) =>
             Task.FromResult(new GitStatus("main", []));
         public Task<string> DiffAsync(string? path = null, CancellationToken ct = default) =>
@@ -137,6 +139,11 @@ public sealed class ExtensionPermissionsTests : IDisposable
         public Task CreateBranchAsync(string branch, bool checkout = true, CancellationToken ct = default) =>
             Task.CompletedTask;
         public Task CheckoutAsync(string branch, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<GitMergeResult> MergeAsync(string branch, CancellationToken ct = default) =>
+            Task.FromResult(new GitMergeResult(true, []));
+        public Task AbortMergeAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task<IReadOnlyList<string>> GetConflictsAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
         public Task<IReadOnlyList<GitCommitInfo>> GetLogAsync(int maxCount = 50, CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<GitCommitInfo>>([]);
         public Task PushAsync(CancellationToken ct = default) => Task.CompletedTask;

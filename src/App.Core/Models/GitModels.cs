@@ -13,3 +13,7 @@ public sealed record GitCommitInfo(
     string Author,
     DateTimeOffset Date,
     string Message);
+
+public sealed record GitMergeResult(
+    bool Succeeded,
+    IReadOnlyList<string> ConflictedFiles);
