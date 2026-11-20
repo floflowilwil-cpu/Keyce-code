@@ -1,111 +1,190 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:App.Desktop.ViewModels"
         x:Class="App.Desktop.Views.MainWindow"
-        Title="Keyce Code"
-        Width="1200"
-        Height="750"
-        MinWidth="800"
-        MinHeight="500"
+        x:DataType="vm:MainWindowViewModel"
+        RequestedThemeVariant="Dark"
+        Icon="/Assets/logo.ico"
+        Title="Keyce Code" Width="1280" Height="780"
+        MinWidth="800" MinHeight="500"
         WindowStartupLocation="CenterScreen"
-        Background="#1E1E1E">
+        Background="#0E0A1F">
+
+	<Window.Styles>
+		<Style Selector="Path.icon">
+			<Setter Property="Stroke" Value="#A78BFA" />
+			<Setter Property="StrokeThickness" Value="1.8" />
+			<Setter Property="StrokeLineCap" Value="Round" />
+			<Setter Property="StrokeJoin" Value="Round" />
+			<Setter Property="Width" Value="24" />
+			<Setter Property="Height" Value="24" />
+		</Style>
+		<Style Selector="Path.small">
+			<Setter Property="Width" Value="16" />
+			<Setter Property="Height" Value="16" />
+			<Setter Property="RenderTransform" Value="scale(0.66)" />
+			<Setter Property="RenderTransformOrigin" Value="0,0" />
+		</Style>
+		<Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+			<Setter Property="Background" Value="#0E0A1F" />
+			<Setter Property="BorderBrush" Value="Transparent" />
+		</Style>
+		<Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+			<Setter Property="Background" Value="#0E0A1F" />
+			<Setter Property="BorderBrush" Value="Transparent" />
+		</Style>
+	</Window.Styles>
 
 	<DockPanel>
 
-		<Menu DockPanel.Dock="Top" Background="#333333">
+		<Menu DockPanel.Dock="Top" Background="#0E0A1F">
 			<MenuItem Header="_Fichier">
-				<MenuItem Header="Nouveau fichier"/>
-				<MenuItem Header="Ouvrir un fichier"/>
-				<MenuItem Header="Ouvrir un dossier"
-                          Click="OpenFolder_Click"/>
-				<Separator/>
-				<MenuItem Header="Enregistrer"/>
+				<MenuItem Header="_Ouvrir un dossier..." Click="OnOpenFolder" />
+				<Separator />
+				<MenuItem Header="_Quitter" Click="OnExit" />
 			</MenuItem>
-			<MenuItem Header="_Édition"/>
-			<MenuItem Header="_Sélection"/>
-			<MenuItem Header="_Affichage"/>
-			<MenuItem Header="_Aide"/>
 		</Menu>
 
-		<Border DockPanel.Dock="Bottom"
-                Height="25"
-                Background="#007ACC">
-			<Grid ColumnDefinitions="*,Auto">
-				<TextBlock Text="Prêt"
-                           Foreground="White"
-                           Margin="10,0"
-                           VerticalAlignment="Center"/>
-				<TextBlock Grid.Column="1"
-                           Text="C# | UTF-8"
-                           Foreground="White"
-                           Margin="10,0"
-                           VerticalAlignment="Center"/>
+		<!-- Barre d'état -->
+		<Border DockPanel.Dock="Bottom" Height="24" Background="#6D28D9">
+			<Grid ColumnDefinitions="*,Auto" Margin="12,0">
+				<TextBlock Text="{Binding StatusMessage}" Foreground="White"
+						   VerticalAlignment="Center" FontSize="12"
+						   TextTrimming="CharacterEllipsis" />
+				<StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16"
+							VerticalAlignment="Center" IsVisible="{Binding HasFile}">
+					<TextBlock Text="{Binding Position}" Foreground="White" FontSize="12" />
+					<TextBlock Text="UTF-8" Foreground="White" FontSize="12" />
+					<TextBlock Text="{Binding LineEnding}" Foreground="White" FontSize="12" />
+					<TextBlock Text="{Binding Language}" Foreground="White" FontSize="12" />
+				</StackPanel>
 			</Grid>
 		</Border>
 
-		<Grid ColumnDefinitions="50,230,4,*">
+		<Grid ColumnDefinitions="52,260,4,*">
 
-			<Border Grid.Column="0" Background="#252526">
-				<StackPanel Spacing="25" Margin="0,15">
-					<TextBlock Text="📁" FontSize="23"
-                               HorizontalAlignment="Center"/>
-					<TextBlock Text="🔍" FontSize="23"
-                               HorizontalAlignment="Center"/>
-					<TextBlock Text="⚙" FontSize="23"
-                               HorizontalAlignment="Center"/>
-				</StackPanel>
+			<!-- Barre d'activité -->
+			<Border Grid.Column="0" Background="#14102B">
+				<DockPanel>
+					<Border DockPanel.Dock="Bottom" Height="48" Opacity="0.6">
+						<Path Classes="icon" HorizontalAlignment="Center" VerticalAlignment="Center"
+							  Data="M4 21v-7 M4 10V3 M12 21v-9 M12 8V3 M20 21v-5 M20 12V3 M1 14h6 M9 8h6 M17 16h6" />
+					</Border>
+					<StackPanel>
+						<Border Height="48" BorderBrush="#7C3AED" BorderThickness="2,0,0,0">
+							<Path Classes="icon" HorizontalAlignment="Center" VerticalAlignment="Center"
+								  Data="M6 2h8l4 4v16H6z M14 2v4h4" />
+						</Border>
+						<Border Height="48" Opacity="0.6">
+							<Path Classes="icon" HorizontalAlignment="Center" VerticalAlignment="Center"
+								  Data="M10.5 3a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15z M16 16l5 5" />
+						</Border>
+						<Border Height="48" Opacity="0.6">
+							<Path Classes="icon" HorizontalAlignment="Center" VerticalAlignment="Center"
+								  Data="M6 3v12 M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M18 9a9 9 0 0 1-9 9" />
+						</Border>
+						<Border Height="48" Opacity="0.6">
+							<Path Classes="icon" HorizontalAlignment="Center" VerticalAlignment="Center"
+								  Data="M6 4l14 8-14 8z" />
+						</Border>
+						<Border Height="48" Opacity="0.6">
+							<Path Classes="icon" HorizontalAlignment="Center" VerticalAlignment="Center"
+								  Data="M3 3h8v8H3z M13 3h8v8h-8z M3 13h8v8H3z M13 13h8v8h-8z" />
+						</Border>
+					</StackPanel>
+				</DockPanel>
 			</Border>
 
-			<Border Grid.Column="1" Background="#252526">
-				<StackPanel Margin="12">
-					<TextBlock Text="EXPLORATEUR"
-                               Foreground="#BBBBBB"
-                               FontSize="12"
-                               FontWeight="Bold"
-                               Margin="0,5,0,20"/>
+			<!-- Explorateur -->
+			<Border Grid.Column="1" Background="#171230">
+				<DockPanel>
+					<TextBlock DockPanel.Dock="Top" Text="EXPLORATEUR" FontSize="11"
+							   Foreground="#C4B5FD" Margin="16,12,0,4" />
+					<TextBlock DockPanel.Dock="Top" Text="{Binding FolderName}" FontSize="12"
+							   FontWeight="SemiBold" Foreground="#E9E5FF"
+							   Margin="16,4,0,6" IsVisible="{Binding HasFolder}" />
 
-					<TextBlock x:Name="FolderName"
-                               Text="KEYCE CODE"
-                               Foreground="White"
-                               FontWeight="Bold"/>
+					<StackPanel VerticalAlignment="Top" Margin="16,20" Spacing="10"
+								IsVisible="{Binding !HasFolder}">
+						<TextBlock Text="Aucun dossier ouvert" Foreground="#9B93C4" FontSize="12" />
+						<Button Content="Ouvrir un dossier" Click="OnOpenFolder"
+								HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+								Background="#6D28D9" Foreground="White" />
+					</StackPanel>
 
-					<ListBox x:Name="ExplorerList"
-                             Background="#252526"
-                             Foreground="White"
-                             BorderThickness="0"
-                             Margin="0,10,0,0"
-                             SelectionChanged="ExplorerList_SelectionChanged"/>
-				</StackPanel>
+					<TreeView ItemsSource="{Binding Nodes}" Background="Transparent"
+							  Margin="4,0" SelectionChanged="OnNodeSelected"
+							  IsVisible="{Binding HasFolder}">
+						<TreeView.ItemTemplate>
+							<TreeDataTemplate DataType="vm:FileNode" ItemsSource="{Binding Children}">
+								<StackPanel Orientation="Horizontal" Spacing="6">
+									<Path Classes="icon small" IsVisible="{Binding IsDirectory}"
+										  Stroke="#C084FC"
+										  Data="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+									<Path Classes="icon small" IsVisible="{Binding !IsDirectory}"
+										  Data="M6 2h8l4 4v16H6z M14 2v4h4" />
+									<TextBlock Text="{Binding Name}" Foreground="#E9E5FF"
+											   FontSize="13" VerticalAlignment="Center" />
+								</StackPanel>
+							</TreeDataTemplate>
+						</TreeView.ItemTemplate>
+					</TreeView>
+				</DockPanel>
 			</Border>
 
-			<GridSplitter Grid.Column="2"
-                          Background="#444444"
-                          ResizeDirection="Columns"/>
+			<GridSplitter Grid.Column="2" Background="#0E0A1F" ResizeDirection="Columns" />
 
-			<Grid Grid.Column="3"
-                  Background="#1E1E1E"
-                  RowDefinitions="35,*">
+			<!-- Centre : onglet + contenu -->
+			<Grid Grid.Column="3" RowDefinitions="36,*">
 
-				<Border Background="#252526">
-					<TextBlock x:Name="EditorTitle"
-                               Text="Bienvenue dans Keyce Code"
-                               Foreground="White"
-                               VerticalAlignment="Center"
-                               Margin="15,0"/>
+				<Border Grid.Row="0" Background="#14102B">
+					<StackPanel Orientation="Horizontal">
+						<Border Background="#0E0A1F" BorderBrush="#7C3AED"
+								BorderThickness="0,2,0,0" Padding="16,0"
+								IsVisible="{Binding !HasFile}">
+							<TextBlock Text="Bienvenue" Foreground="#E9E5FF"
+									   VerticalAlignment="Center" FontSize="13" />
+						</Border>
+						<Border Background="#0E0A1F" BorderBrush="#7C3AED"
+								BorderThickness="0,2,0,0" Padding="16,0,6,0"
+								IsVisible="{Binding HasFile}">
+							<StackPanel Orientation="Horizontal" Spacing="8">
+								<TextBlock Text="{Binding OpenFileName}" Foreground="#E9E5FF"
+										   VerticalAlignment="Center" FontSize="13" />
+								<Button Content="✕" Command="{Binding CloseFileCommand}"
+										Background="Transparent" Foreground="#A78BFA" Padding="6,2" />
+							</StackPanel>
+						</Border>
+					</StackPanel>
 				</Border>
 
-				<TextBox x:Name="EditorTextBox"
-                         Grid.Row="1"
-                         Background="#1E1E1E"
-                         Foreground="#D4D4D4"
-                         FontFamily="Consolas"
-                         FontSize="14"
-                         AcceptsReturn="True"
-                         AcceptsTab="True"
-                         TextWrapping="NoWrap"
-                         BorderThickness="0"
-                         Padding="15"/>
+				<!-- Page d'accueil -->
+				<Border Grid.Row="1" Background="#0E0A1F" IsVisible="{Binding !HasFile}">
+					<StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10">
+						<Image Source="avares://App.Desktop/Assets/logo.png" Width="150" Height="150" />
+						<TextBlock FontSize="46" FontWeight="Bold" HorizontalAlignment="Center">
+							<Run Text="Keyce " Foreground="White" />
+							<Run Text="Code" Foreground="#C026D3" />
+						</TextBlock>
+						<TextBlock Text="Créez. Codez. Innovez." FontSize="18" FontStyle="Italic"
+								   Foreground="#A78BFA" HorizontalAlignment="Center" />
+						<Button Content="Ouvrir un dossier..." Click="OnOpenFolder"
+								HorizontalAlignment="Center" Margin="0,20,0,0" Padding="20,8"
+								Background="#6D28D9" Foreground="White" />
+					</StackPanel>
+				</Border>
 
+				<!-- Affichage du fichier (lecture seule, l'édition = développeur 2) -->
+				<TextBox Grid.Row="1" x:Name="EditorBox" Text="{Binding FileContent}"
+						 IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+						 FontFamily="Consolas,Cascadia Mono,monospace" FontSize="14"
+						 Background="#0E0A1F" Foreground="#E9E5FF" BorderThickness="0"
+						 CornerRadius="0" Padding="12"
+						 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+						 ScrollViewer.VerticalScrollBarVisibility="Auto"
+						 IsVisible="{Binding HasFile}" />
 			</Grid>
+
 		</Grid>
 	</DockPanel>
 </Window>

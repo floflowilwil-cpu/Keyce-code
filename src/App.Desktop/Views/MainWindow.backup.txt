@@ -1,113 +1,155 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="App.Desktop.Views.MainWindow"
-        Title="Keyce Code"
-        Width="1200"
-        Height="750"
-        MinWidth="800"
-        MinHeight="500"
+        RequestedThemeVariant="Dark"
+        Title="Keyce Code" Width="1280" Height="780"
+        MinWidth="800" MinHeight="500"
         WindowStartupLocation="CenterScreen"
-        Background="#1E1E1E">
+        Background="#0E0A1F">
 
 	<DockPanel>
 
-		<Menu DockPanel.Dock="Top" Background="#333333">
-			<MenuItem Header="_Fichier">
-				<MenuItem Header="Nouveau fichier"/>
-				<MenuItem Header="Ouvrir un fichier"/>
-				<MenuItem Header="Ouvrir un dossier"
-                          Click="OpenFolder_Click"/>
-				<Separator/>
-				<MenuItem Header="Enregistrer"/>
-			</MenuItem>
-			<MenuItem Header="_Édition"/>
-			<MenuItem Header="_Sélection"/>
-			<MenuItem Header="_Affichage"/>
-			<MenuItem Header="_Aide"/>
+		<!-- Menus -->
+		<Menu DockPanel.Dock="Top" Background="#0E0A1F">
+			<MenuItem Header="_Fichier" />
+			<MenuItem Header="_Édition" />
+			<MenuItem Header="_Sélection" />
+			<MenuItem Header="_Affichage" />
+			<MenuItem Header="_Atteindre" />
+			<MenuItem Header="E_xécuter" />
+			<MenuItem Header="_Terminal" />
+			<MenuItem Header="_Aide" />
 		</Menu>
 
-		<Border DockPanel.Dock="Bottom"
-                Height="25"
-                Background="#007ACC">
-			<Grid ColumnDefinitions="*,Auto">
-				<TextBlock Text="Prêt"
-                           Foreground="White"
-                           Margin="10,0"
-                           VerticalAlignment="Center"/>
-				<TextBlock Grid.Column="1"
-                           Text="C# | UTF-8"
-                           Foreground="White"
-                           Margin="10,0"
-                           VerticalAlignment="Center"/>
+		<!-- Barre d'état -->
+		<Border DockPanel.Dock="Bottom" Height="24" Background="#6D28D9">
+			<Grid ColumnDefinitions="*,Auto" Margin="12,0">
+				<TextBlock Text="Branche : main" Foreground="White"
+						   VerticalAlignment="Center" FontSize="12" />
+				<StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16"
+							VerticalAlignment="Center">
+					<TextBlock Text="Ln 1, Col 1" Foreground="White" FontSize="12" />
+					<TextBlock Text="Espaces : 4" Foreground="White" FontSize="12" />
+					<TextBlock Text="UTF-8" Foreground="White" FontSize="12" />
+					<TextBlock Text="CRLF" Foreground="White" FontSize="12" />
+					<TextBlock Text="C#" Foreground="White" FontSize="12" />
+				</StackPanel>
 			</Grid>
 		</Border>
 
-		<Grid ColumnDefinitions="50,230,4,*">
+		<!-- Zone principale -->
+		<Grid>
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="52" />
+				<ColumnDefinition Width="260" MinWidth="160" />
+				<ColumnDefinition Width="4" />
+				<ColumnDefinition Width="*" MinWidth="250" />
+				<ColumnDefinition Width="4" />
+				<ColumnDefinition Width="260" MinWidth="160" />
+			</Grid.ColumnDefinitions>
 
-			<Border Grid.Column="0" Background="#252526">
-				<StackPanel Spacing="25" Margin="0,15">
-					<TextBlock Text="📁" FontSize="23"
-                               HorizontalAlignment="Center"/>
-					<TextBlock Text="🔍" FontSize="23"
-                               HorizontalAlignment="Center"/>
-					<TextBlock Text="⚙" FontSize="23"
-                               HorizontalAlignment="Center"/>
-				</StackPanel>
+			<!-- Barre d'activité -->
+			<Border Grid.Column="0" Background="#14102B">
+				<DockPanel>
+					<TextBlock DockPanel.Dock="Bottom" Text="⚙" FontSize="22"
+							   Foreground="#A78BFA" HorizontalAlignment="Center"
+							   Margin="0,0,0,12" />
+					<StackPanel Spacing="0">
+						<Border BorderBrush="#7C3AED" BorderThickness="2,0,0,0" Height="48">
+							<TextBlock Text="📄" FontSize="22" HorizontalAlignment="Center"
+									   VerticalAlignment="Center" />
+						</Border>
+						<Border Height="48">
+							<TextBlock Text="🔍" FontSize="22" HorizontalAlignment="Center"
+									   VerticalAlignment="Center" Opacity="0.7" />
+						</Border>
+						<Border Height="48">
+							<TextBlock Text="🌿" FontSize="22" HorizontalAlignment="Center"
+									   VerticalAlignment="Center" Opacity="0.7" />
+						</Border>
+						<Border Height="48">
+							<TextBlock Text="▶" FontSize="22" HorizontalAlignment="Center"
+									   VerticalAlignment="Center" Opacity="0.7" />
+						</Border>
+						<Border Height="48">
+							<TextBlock Text="🧩" FontSize="22" HorizontalAlignment="Center"
+									   VerticalAlignment="Center" Opacity="0.7" />
+						</Border>
+					</StackPanel>
+				</DockPanel>
 			</Border>
 
-			<Border Grid.Column="1" Background="#252526">
-				<StackPanel Margin="12">
-					<TextBlock Text="EXPLORATEUR"
-                               Foreground="#BBBBBB"
-                               FontSize="12"
-                               FontWeight="Bold"
-                               Margin="0,5,0,20"/>
-
-					<TextBlock x:Name="FolderName"
-                               Text="KEYCE CODE"
-                               Foreground="White"
-                               FontWeight="Bold"/>
-
-					<ListBox x:Name="ExplorerList"
-                             Background="#252526"
-                             Foreground="White"
-                             BorderThickness="0"
-                             Margin="0,10,0,0"
-                             SelectionChanged="ExplorerList_SelectionChanged"/>
-				</StackPanel>
+			<!-- Barre latérale : explorateur -->
+			<Border Grid.Column="1" Background="#171230">
+				<DockPanel>
+					<TextBlock DockPanel.Dock="Top" Text="EXPLORATEUR" FontSize="11"
+							   Foreground="#C4B5FD" Margin="16,12,0,8" />
+					<TreeView Background="Transparent" Margin="4,0">
+						<TreeViewItem Header="KEYCE-PROJET" IsExpanded="True">
+							<TreeViewItem Header="src" IsExpanded="True">
+								<TreeViewItem Header="core" />
+								<TreeViewItem Header="editor" />
+								<TreeViewItem Header="ui" />
+								<TreeViewItem Header="Program.cs" />
+							</TreeViewItem>
+							<TreeViewItem Header="tests" />
+							<TreeViewItem Header="docs" />
+							<TreeViewItem Header="README.md" />
+						</TreeViewItem>
+					</TreeView>
+				</DockPanel>
 			</Border>
 
-			<GridSplitter Grid.Column="2"
-                          Background="#444444"
-                          ResizeDirection="Columns"/>
+			<GridSplitter Grid.Column="2" Background="#0E0A1F"
+						  ResizeDirection="Columns" />
 
-			<Grid Grid.Column="3"
-                  Background="#1E1E1E"
-                  RowDefinitions="35,*">
-
-				<Border Background="#252526">
-					<TextBlock x:Name="EditorTitle"
-                               Text="Bienvenue dans Keyce Code"
-                               Foreground="White"
-                               VerticalAlignment="Center"
-                               Margin="15,0"/>
+			<!-- Centre : onglets + contenu -->
+			<Grid Grid.Column="3" RowDefinitions="36,*">
+				<Border Grid.Row="0" Background="#14102B">
+					<StackPanel Orientation="Horizontal">
+						<Border Background="#0E0A1F" BorderBrush="#7C3AED"
+								BorderThickness="0,2,0,0" Padding="16,0">
+							<TextBlock Text="Bienvenue    ✕" Foreground="#E9E5FF"
+									   VerticalAlignment="Center" FontSize="13" />
+						</Border>
+						<TextBlock Text="+" FontSize="20" Foreground="#A78BFA"
+								   VerticalAlignment="Center" Margin="14,0" />
+					</StackPanel>
 				</Border>
 
-				<TextBox x:Name="EditorTextBox"
-                         Grid.Row="1"
-                         Background="#1E1E1E"
-                         Foreground="#D4D4D4"
-                         FontFamily="Consolas"
-                         FontSize="14"
-                         AcceptsReturn="True"
-                         AcceptsTab="True"
-                         TextWrapping="NoWrap"
-                         HorizontalScrollBarVisibility="Auto"
-                         VerticalScrollBarVisibility="Auto"
-                         BorderThickness="0"
-                         Padding="15"/>
-
+				<Border Grid.Row="1" Background="#0E0A1F">
+					<StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+								Spacing="8">
+						<TextBlock Text="Keyce Code" FontSize="46" FontWeight="Bold"
+								   Foreground="White" HorizontalAlignment="Center" />
+						<TextBlock Text="Créez. Codez. Innovez." FontSize="18"
+								   FontStyle="Italic" Foreground="#A78BFA"
+								   HorizontalAlignment="Center" />
+						<TextBlock Text="Zone d'édition prévue pour le moteur du développeur 2"
+								   FontSize="12" Foreground="#6B6490"
+								   HorizontalAlignment="Center" Margin="0,24,0,0" />
+					</StackPanel>
+				</Border>
 			</Grid>
+
+			<GridSplitter Grid.Column="4" Background="#0E0A1F"
+						  ResizeDirection="Columns" />
+
+			<!-- Panneau de droite : Problèmes -->
+			<Border Grid.Column="5" Background="#171230">
+				<DockPanel>
+					<TextBlock DockPanel.Dock="Top" Text="PROBLÈMES" FontSize="11"
+							   Foreground="#C4B5FD" Margin="16,12,0,8" />
+					<StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+								Spacing="6">
+						<TextBlock Text="✔" FontSize="40" Foreground="#34D399"
+								   HorizontalAlignment="Center" />
+						<TextBlock Text="Aucun problème" Foreground="#E9E5FF"
+								   FontSize="13" HorizontalAlignment="Center" />
+					</StackPanel>
+				</DockPanel>
+			</Border>
+
 		</Grid>
 	</DockPanel>
 </Window>
