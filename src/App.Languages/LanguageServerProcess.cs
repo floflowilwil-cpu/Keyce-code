@@ -3,10 +3,7 @@ using StreamJsonRpc;
 
 namespace App.Languages;
 
-/// <summary>
-/// Lance un serveur de langage (ex. pylsp) comme processus enfant
-/// et établit la communication JSON-RPC via stdin/stdout.
-/// </summary>
+
 public sealed class LanguageServerProcess : IDisposable
 {
     private Process? _process;
@@ -17,7 +14,7 @@ public sealed class LanguageServerProcess : IDisposable
     /// <summary>Messages envoyés par le serveur sur stderr (utile pour le débogage).</summary>
     public event Action<string>? ErrorOutput;
 
-    public void Start(string command, string arguments = "")
+    public void Start(string command, string arguments = "", object? localTarget = null)
     {
         if (_process is not null)
             throw new InvalidOperationException("Le serveur est déjà démarré.");
@@ -47,6 +44,8 @@ public sealed class LanguageServerProcess : IDisposable
             new JsonMessageFormatter());
 
         Rpc = new JsonRpc(handler);
+        if (localTarget is not null)
+        Rpc.AddLocalRpcTarget(localTarget);
         Rpc.StartListening();
     }
 
