@@ -25,6 +25,8 @@ public sealed partial class ExtensionManager : IExtensionService
     private static partial Regex ValidIdRegex();
 
     private readonly string _root;
+    private readonly IGitService? _git;
+    private readonly IWorkspaceService? _workspace;
     private readonly Dictionary<string, ExtensionInfo> _extensions =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly object _lock = new();
@@ -37,13 +39,19 @@ public sealed partial class ExtensionManager : IExtensionService
     private readonly Dictionary<string, RunningExtension> _running =
         new(StringComparer.OrdinalIgnoreCase);
 
-    public ExtensionManager(string extensionsRoot, ICommandService? commands = null)
+    public ExtensionManager(
+        string extensionsRoot,
+        ICommandService? commands = null,
+        IGitService? git = null,
+        IWorkspaceService? workspace = null)
     {
         if (string.IsNullOrWhiteSpace(extensionsRoot))
             throw new ArgumentException(
                 "Le dossier des extensions est obligatoire.", nameof(extensionsRoot));
 
         _root = extensionsRoot;
+        _git = git;
+        _workspace = workspace;
         Commands = commands ?? new CommandService();
     }
 
@@ -272,7 +280,7 @@ public sealed partial class ExtensionManager : IExtensionService
 
         string mainPath = ResolveMainPath(info);
         var loadContext = new ExtensionLoadContext(info.InstallPath, info.Manifest.Id);
-        var context = new ExtensionContext(info, Commands);
+        var context = new ExtensionContext(info, Commands, _git, _workspace);
 
         void Cleanup()
         {
@@ -402,10 +410,22 @@ public sealed partial class ExtensionManager : IExtensionService
                     ErrorCode.InvalidArgument,
                     "Identifiant invalide : lettres, chiffres, '.', '-' et '_' uniquement.");
 
+            IReadOnlyList<string> permissions = manifest.Permissions ?? [];
+            foreach (string permission in permissions)
+            {
+                if (string.IsNullOrWhiteSpace(permission)
+                    || !ExtensionPermissions.All.Contains(permission))
+                {
+                    throw new AppException(
+                        ErrorCode.InvalidArgument,
+                        $"Permission inconnue dans le manifeste : '{permission}'.");
+                }
+            }
+
             return manifest with
             {
                 Description = manifest.Description ?? string.Empty,
-                Permissions = manifest.Permissions ?? []
+                Permissions = permissions
             };
         }
         catch (JsonException ex)
