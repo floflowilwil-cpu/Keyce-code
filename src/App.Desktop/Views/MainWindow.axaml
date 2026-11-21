@@ -3,12 +3,60 @@
         xmlns:vm="using:App.Desktop.ViewModels"
         x:Class="App.Desktop.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        RequestedThemeVariant="Dark"
         Icon="/Assets/logo.ico"
         Title="Keyce Code" Width="1280" Height="780"
         MinWidth="800" MinHeight="500"
         WindowStartupLocation="CenterScreen"
-        Background="#0E0A1F">
+        Background="{DynamicResource BgMain}">
+
+	<!-- ===== Palette des deux thèmes ===== -->
+	<Window.Resources>
+		<ResourceDictionary>
+			<ResourceDictionary.ThemeDictionaries>
+
+				<ResourceDictionary x:Key="Dark">
+					<SolidColorBrush x:Key="BgMain">#0E0A1F</SolidColorBrush>
+					<SolidColorBrush x:Key="BgBar">#14102B</SolidColorBrush>
+					<SolidColorBrush x:Key="BgSide">#171230</SolidColorBrush>
+					<SolidColorBrush x:Key="BgPanel">#12102A</SolidColorBrush>
+					<SolidColorBrush x:Key="BgHover">#1E1840</SolidColorBrush>
+					<SolidColorBrush x:Key="BgFloat">#1E1840</SolidColorBrush>
+					<SolidColorBrush x:Key="Line">#2A2350</SolidColorBrush>
+					<SolidColorBrush x:Key="TextMain">#E9E5FF</SolidColorBrush>
+					<SolidColorBrush x:Key="TextMuted">#9B93C4</SolidColorBrush>
+					<SolidColorBrush x:Key="TextDim">#7F78A8</SolidColorBrush>
+					<SolidColorBrush x:Key="TextAccent">#C4B5FD</SolidColorBrush>
+					<SolidColorBrush x:Key="TextTitle">#FFFFFF</SolidColorBrush>
+					<SolidColorBrush x:Key="Icon">#9A8FC9</SolidColorBrush>
+					<SolidColorBrush x:Key="IconActive">#F3EFFF</SolidColorBrush>
+					<SolidColorBrush x:Key="FolderIcon">#C084FC</SolidColorBrush>
+					<SolidColorBrush x:Key="Accent">#A855F7</SolidColorBrush>
+					<SolidColorBrush x:Key="Primary">#6D28D9</SolidColorBrush>
+				</ResourceDictionary>
+
+				<ResourceDictionary x:Key="Light">
+					<SolidColorBrush x:Key="BgMain">#FFFFFF</SolidColorBrush>
+					<SolidColorBrush x:Key="BgBar">#EEEAF8</SolidColorBrush>
+					<SolidColorBrush x:Key="BgSide">#F5F2FC</SolidColorBrush>
+					<SolidColorBrush x:Key="BgPanel">#F3F0FA</SolidColorBrush>
+					<SolidColorBrush x:Key="BgHover">#E6E0F5</SolidColorBrush>
+					<SolidColorBrush x:Key="BgFloat">#FFFFFF</SolidColorBrush>
+					<SolidColorBrush x:Key="Line">#D9D2EE</SolidColorBrush>
+					<SolidColorBrush x:Key="TextMain">#1F1A3D</SolidColorBrush>
+					<SolidColorBrush x:Key="TextMuted">#5E5683</SolidColorBrush>
+					<SolidColorBrush x:Key="TextDim">#7A7399</SolidColorBrush>
+					<SolidColorBrush x:Key="TextAccent">#6D28D9</SolidColorBrush>
+					<SolidColorBrush x:Key="TextTitle">#1F1A3D</SolidColorBrush>
+					<SolidColorBrush x:Key="Icon">#5B5185</SolidColorBrush>
+					<SolidColorBrush x:Key="IconActive">#1F1A3D</SolidColorBrush>
+					<SolidColorBrush x:Key="FolderIcon">#9333EA</SolidColorBrush>
+					<SolidColorBrush x:Key="Accent">#7C3AED</SolidColorBrush>
+					<SolidColorBrush x:Key="Primary">#7C3AED</SolidColorBrush>
+				</ResourceDictionary>
+
+			</ResourceDictionary.ThemeDictionaries>
+		</ResourceDictionary>
+	</Window.Resources>
 
 	<Window.KeyBindings>
 		<KeyBinding Gesture="Ctrl+B" Command="{Binding ToggleSidebarCommand}" />
@@ -19,7 +67,7 @@
 
 	<Window.Styles>
 		<Style Selector="Path.icon">
-			<Setter Property="Stroke" Value="#9A8FC9" />
+			<Setter Property="Stroke" Value="{DynamicResource Icon}" />
 			<Setter Property="StrokeThickness" Value="1.5" />
 			<Setter Property="StrokeLineCap" Value="Round" />
 			<Setter Property="StrokeJoin" Value="Round" />
@@ -27,7 +75,7 @@
 			<Setter Property="Height" Value="24" />
 		</Style>
 		<Style Selector="Path.active">
-			<Setter Property="Stroke" Value="#F3EFFF" />
+			<Setter Property="Stroke" Value="{DynamicResource IconActive}" />
 		</Style>
 		<Style Selector="Path.small">
 			<Setter Property="Width" Value="16" />
@@ -46,22 +94,22 @@
 			<Setter Property="VerticalContentAlignment" Value="Center" />
 		</Style>
 		<Style Selector="Button.act:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-			<Setter Property="Background" Value="#1E1840" />
+			<Setter Property="Background" Value="{DynamicResource BgHover}" />
 		</Style>
 		<Style Selector="Button.tab">
 			<Setter Property="Background" Value="Transparent" />
-			<Setter Property="Foreground" Value="#C4B5FD" />
+			<Setter Property="Foreground" Value="{DynamicResource TextAccent}" />
 			<Setter Property="FontSize" Value="11" />
 			<Setter Property="Padding" Value="12,0" />
 			<Setter Property="VerticalAlignment" Value="Stretch" />
 			<Setter Property="CornerRadius" Value="0" />
 		</Style>
 		<Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
-			<Setter Property="Background" Value="#0E0A1F" />
+			<Setter Property="Background" Value="{DynamicResource BgMain}" />
 			<Setter Property="BorderBrush" Value="Transparent" />
 		</Style>
 		<Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
-			<Setter Property="Background" Value="#0E0A1F" />
+			<Setter Property="Background" Value="{DynamicResource BgMain}" />
 			<Setter Property="BorderBrush" Value="Transparent" />
 		</Style>
 	</Window.Styles>
@@ -69,7 +117,7 @@
 	<DockPanel>
 
 		<!-- ===== Menus ===== -->
-		<Menu DockPanel.Dock="Top" Background="#0E0A1F" FontSize="13">
+		<Menu DockPanel.Dock="Top" Background="{DynamicResource BgMain}" FontSize="13">
 
 			<MenuItem Header="_Fichier">
 				<MenuItem Header="Nouveau fichier" Command="{Binding NotAvailableCommand}" CommandParameter="développeur 2|Nouveau fichier" />
@@ -113,7 +161,7 @@
 				<MenuItem Header="Afficher / masquer le panneau du bas" InputGesture="Ctrl+J" Command="{Binding ToggleBottomCommand}" />
 				<Separator />
 				<MenuItem Header="Afficher / masquer la barre latérale" InputGesture="Ctrl+B" Command="{Binding ToggleSidebarCommand}" />
-				<MenuItem Header="Thème clair / sombre" IsEnabled="False" />
+				<MenuItem Header="Thème clair / sombre" Click="OnToggleTheme" />
 			</MenuItem>
 
 			<MenuItem Header="_Atteindre">
@@ -142,7 +190,7 @@
 		</Menu>
 
 		<!-- ===== Barre d'état ===== -->
-		<Border DockPanel.Dock="Bottom" Height="24" Background="#6D28D9">
+		<Border DockPanel.Dock="Bottom" Height="24" Background="{DynamicResource Primary}">
 			<Grid ColumnDefinitions="*,Auto" Margin="12,0">
 				<TextBlock Text="{Binding StatusMessage}" Foreground="White"
 						   VerticalAlignment="Center" FontSize="12"
@@ -160,7 +208,7 @@
 		<Grid x:Name="RootGrid" ColumnDefinitions="52,260,4,*">
 
 			<!-- ===== Barre d'activité ===== -->
-			<Border Grid.Column="0" Background="#14102B">
+			<Border Grid.Column="0" Background="{DynamicResource BgBar}">
 				<DockPanel>
 					<Border DockPanel.Dock="Bottom" Height="48">
 						<Path Classes="icon" HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -168,35 +216,35 @@
 					</Border>
 					<StackPanel>
 						<Grid Height="48">
-							<Border Width="2" HorizontalAlignment="Left" Background="#A855F7" IsVisible="{Binding IsExplorerActive}" />
+							<Border Width="2" HorizontalAlignment="Left" Background="{DynamicResource Accent}" IsVisible="{Binding IsExplorerActive}" />
 							<Button Classes="act" Command="{Binding ShowPanelCommand}" CommandParameter="0">
 								<Path Classes="icon" Classes.active="{Binding IsExplorerActive}"
 									  Data="M5 7h9l4 4v10H5z M14 7v4h4 M8 7V3h8l4 4v10h-2" />
 							</Button>
 						</Grid>
 						<Grid Height="48">
-							<Border Width="2" HorizontalAlignment="Left" Background="#A855F7" IsVisible="{Binding IsSearchActive}" />
+							<Border Width="2" HorizontalAlignment="Left" Background="{DynamicResource Accent}" IsVisible="{Binding IsSearchActive}" />
 							<Button Classes="act" Command="{Binding ShowPanelCommand}" CommandParameter="1">
 								<Path Classes="icon" Classes.active="{Binding IsSearchActive}"
 									  Data="M14 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12z M9.8 14.2L4 20" />
 							</Button>
 						</Grid>
 						<Grid Height="48">
-							<Border Width="2" HorizontalAlignment="Left" Background="#A855F7" IsVisible="{Binding IsGitActive}" />
+							<Border Width="2" HorizontalAlignment="Left" Background="{DynamicResource Accent}" IsVisible="{Binding IsGitActive}" />
 							<Button Classes="act" Command="{Binding ShowPanelCommand}" CommandParameter="2">
 								<Path Classes="icon" Classes.active="{Binding IsGitActive}"
 									  Data="M6 2.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M6 16.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M18 6.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M6 7.5v9 M18 11.5c0 3.5-12 1.5-12 5" />
 							</Button>
 						</Grid>
 						<Grid Height="48">
-							<Border Width="2" HorizontalAlignment="Left" Background="#A855F7" IsVisible="{Binding IsRunActive}" />
+							<Border Width="2" HorizontalAlignment="Left" Background="{DynamicResource Accent}" IsVisible="{Binding IsRunActive}" />
 							<Button Classes="act" Command="{Binding ShowPanelCommand}" CommandParameter="3">
 								<Path Classes="icon" Classes.active="{Binding IsRunActive}"
 									  Data="M5 3.5l10 6.5-10 6.5z M15.5 17.5a2.5 3.5 0 1 0 5 0 2.5 3.5 0 0 0-5 0z M14 16h1.5 M20.5 16H22 M14 20h1.5 M20.5 20H22 M18 14v7" />
 							</Button>
 						</Grid>
 						<Grid Height="48">
-							<Border Width="2" HorizontalAlignment="Left" Background="#A855F7" IsVisible="{Binding IsExtensionsActive}" />
+							<Border Width="2" HorizontalAlignment="Left" Background="{DynamicResource Accent}" IsVisible="{Binding IsExtensionsActive}" />
 							<Button Classes="act" Command="{Binding ShowPanelCommand}" CommandParameter="4">
 								<Path Classes="icon" Classes.active="{Binding IsExtensionsActive}"
 									  Data="M3 13h7v7H3z M12 13h7v7h-7z M3 4h7v7H3z M15 2h6v6h-6z" />
@@ -207,23 +255,23 @@
 			</Border>
 
 			<!-- ===== Barre latérale ===== -->
-			<Border Grid.Column="1" Background="#171230" ClipToBounds="True"
+			<Border Grid.Column="1" Background="{DynamicResource BgSide}" ClipToBounds="True"
 					IsVisible="{Binding IsSidebarVisible}">
 				<DockPanel>
 					<TextBlock DockPanel.Dock="Top" Text="{Binding PanelTitle}" FontSize="11"
-							   Foreground="#C4B5FD" Margin="16,12,0,4" />
+							   Foreground="{DynamicResource TextAccent}" Margin="16,12,0,4" />
 					<Grid>
 
 						<DockPanel IsVisible="{Binding IsExplorerActive}">
 							<TextBlock DockPanel.Dock="Top" Text="{Binding FolderName}" FontSize="12"
-									   FontWeight="SemiBold" Foreground="#E9E5FF"
+									   FontWeight="SemiBold" Foreground="{DynamicResource TextMain}"
 									   Margin="16,4,0,6" IsVisible="{Binding HasFolder}" />
 							<StackPanel DockPanel.Dock="Top" Margin="16,16" Spacing="10"
 										IsVisible="{Binding !HasFolder}">
-								<TextBlock Text="Aucun dossier ouvert" Foreground="#9B93C4" FontSize="12" />
+								<TextBlock Text="Aucun dossier ouvert" Foreground="{DynamicResource TextMuted}" FontSize="12" />
 								<Button Content="Ouvrir un dossier" Click="OnOpenFolder"
 										HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-										Background="#6D28D9" Foreground="White" />
+										Background="{DynamicResource Primary}" Foreground="White" />
 							</StackPanel>
 							<TreeView ItemsSource="{Binding Nodes}" Background="Transparent"
 									  Margin="4,0" SelectionChanged="OnNodeSelected"
@@ -231,11 +279,12 @@
 								<TreeView.ItemTemplate>
 									<TreeDataTemplate DataType="vm:FileNode" ItemsSource="{Binding Children}">
 										<StackPanel Orientation="Horizontal" Spacing="6">
-											<Path Classes="icon small" IsVisible="{Binding IsDirectory}" Stroke="#C084FC"
+											<Path Classes="icon small" IsVisible="{Binding IsDirectory}"
+												  Stroke="{DynamicResource FolderIcon}"
 												  Data="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
 											<Path Classes="icon small" IsVisible="{Binding !IsDirectory}"
 												  Data="M6 2h8l4 4v16H6z M14 2v4h4" />
-											<TextBlock Text="{Binding Name}" Foreground="#E9E5FF"
+											<TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextMain}"
 													   FontSize="13" VerticalAlignment="Center" />
 										</StackPanel>
 									</TreeDataTemplate>
@@ -245,17 +294,17 @@
 
 						<DockPanel IsVisible="{Binding IsSearchActive}">
 							<TextBox DockPanel.Dock="Top" x:Name="SearchBox" Text="{Binding SearchQuery}"
-									 Watermark="Nom de fichier..." Margin="12,6"
-									 Background="#0E0A1F" Foreground="#E9E5FF" />
+									 PlaceholderText="Nom de fichier..." Margin="12,6"
+									 Background="{DynamicResource BgMain}" Foreground="{DynamicResource TextMain}" />
 							<TextBlock DockPanel.Dock="Top" Text="{Binding SearchInfo}"
-									   Foreground="#9B93C4" FontSize="12" Margin="16,0,0,6" />
+									   Foreground="{DynamicResource TextMuted}" FontSize="12" Margin="16,0,0,6" />
 							<ListBox ItemsSource="{Binding SearchResults}" Background="Transparent"
 									 SelectionChanged="OnNodeSelected">
 								<ListBox.ItemTemplate>
 									<DataTemplate DataType="vm:FileNode">
 										<StackPanel>
-											<TextBlock Text="{Binding Name}" Foreground="#E9E5FF" FontSize="13" />
-											<TextBlock Text="{Binding Directory}" Foreground="#7F78A8" FontSize="11"
+											<TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextMain}" FontSize="13" />
+											<TextBlock Text="{Binding Directory}" Foreground="{DynamicResource TextDim}" FontSize="11"
 													   TextTrimming="CharacterEllipsis" />
 										</StackPanel>
 									</DataTemplate>
@@ -264,7 +313,7 @@
 						</DockPanel>
 
 						<StackPanel IsVisible="{Binding IsPlaceholderActive}" Margin="16,12">
-							<TextBlock Text="{Binding PlaceholderMessage}" Foreground="#9B93C4"
+							<TextBlock Text="{Binding PlaceholderMessage}" Foreground="{DynamicResource TextMuted}"
 									   FontSize="12" TextWrapping="Wrap" />
 						</StackPanel>
 
@@ -272,45 +321,45 @@
 				</DockPanel>
 			</Border>
 
-			<GridSplitter Grid.Column="2" Background="#0E0A1F" ResizeDirection="Columns"
+			<GridSplitter Grid.Column="2" Background="{DynamicResource BgMain}" ResizeDirection="Columns"
 						  IsVisible="{Binding IsSidebarVisible}" />
 
 			<!-- ===== Centre ===== -->
 			<Grid Grid.Column="3" x:Name="CenterGrid" RowDefinitions="36,*,0,0">
 
 				<!-- Onglets -->
-				<Border Grid.Row="0" Background="#14102B">
+				<Border Grid.Row="0" Background="{DynamicResource BgBar}">
 					<StackPanel Orientation="Horizontal">
-						<Border Background="#0E0A1F" BorderBrush="#A855F7"
+						<Border Background="{DynamicResource BgMain}" BorderBrush="{DynamicResource Accent}"
 								BorderThickness="0,2,0,0" Padding="16,0" IsVisible="{Binding !HasFile}">
-							<TextBlock Text="Bienvenue" Foreground="#E9E5FF"
+							<TextBlock Text="Bienvenue" Foreground="{DynamicResource TextMain}"
 									   VerticalAlignment="Center" FontSize="13" />
 						</Border>
-						<Border Background="#0E0A1F" BorderBrush="#A855F7"
+						<Border Background="{DynamicResource BgMain}" BorderBrush="{DynamicResource Accent}"
 								BorderThickness="0,2,0,0" Padding="16,0,6,0" IsVisible="{Binding HasFile}">
 							<StackPanel Orientation="Horizontal" Spacing="8">
-								<TextBlock Text="{Binding OpenFileName}" Foreground="#E9E5FF"
+								<TextBlock Text="{Binding OpenFileName}" Foreground="{DynamicResource TextMain}"
 										   VerticalAlignment="Center" FontSize="13" />
 								<Button Content="✕" Command="{Binding CloseFileCommand}"
-										Background="Transparent" Foreground="#A78BFA" Padding="6,2" />
+										Background="Transparent" Foreground="{DynamicResource TextAccent}" Padding="6,2" />
 							</StackPanel>
 						</Border>
 					</StackPanel>
 				</Border>
 
 				<!-- Accueil -->
-				<Border Grid.Row="1" Background="#0E0A1F" IsVisible="{Binding !HasFile}">
+				<Border Grid.Row="1" Background="{DynamicResource BgMain}" IsVisible="{Binding !HasFile}">
 					<StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10">
 						<Image Source="avares://App.Desktop/Assets/logo.png" Width="150" Height="150" />
 						<TextBlock FontSize="46" FontWeight="Bold" HorizontalAlignment="Center">
-							<Run Text="Keyce " Foreground="White" />
+							<Run Text="Keyce " Foreground="{DynamicResource TextTitle}" />
 							<Run Text="Code" Foreground="#C026D3" />
 						</TextBlock>
 						<TextBlock Text="Créez. Codez. Innovez." FontSize="18" FontStyle="Italic"
-								   Foreground="#A78BFA" HorizontalAlignment="Center" />
+								   Foreground="{DynamicResource TextAccent}" HorizontalAlignment="Center" />
 						<Button Content="Ouvrir un dossier..." Click="OnOpenFolder"
 								HorizontalAlignment="Center" Margin="0,20,0,0" Padding="20,8"
-								Background="#6D28D9" Foreground="White" />
+								Background="{DynamicResource Primary}" Foreground="White" />
 					</StackPanel>
 				</Border>
 
@@ -318,61 +367,64 @@
 				<TextBox Grid.Row="1" x:Name="EditorBox" Text="{Binding FileContent}"
 						 IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
 						 FontFamily="Consolas,Cascadia Mono,monospace" FontSize="14"
-						 Background="#0E0A1F" Foreground="#E9E5FF" BorderThickness="0"
-						 CornerRadius="0" Padding="12"
+						 Background="{DynamicResource BgMain}" Foreground="{DynamicResource TextMain}"
+						 BorderThickness="0" CornerRadius="0" Padding="12"
 						 ScrollViewer.HorizontalScrollBarVisibility="Auto"
 						 ScrollViewer.VerticalScrollBarVisibility="Auto"
 						 IsVisible="{Binding HasFile}" />
 
 				<!-- Barre de recherche dans le fichier -->
 				<Border Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Top"
-						Margin="0,8,24,0" Padding="8" Background="#1E1840" CornerRadius="6"
+						Margin="0,8,24,0" Padding="8" Background="{DynamicResource BgFloat}"
+						BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="6"
 						IsVisible="{Binding IsFindVisible}">
 					<StackPanel Orientation="Horizontal" Spacing="6">
-						<TextBox x:Name="FindBox" Width="200" Watermark="Rechercher..."
-								 Background="#0E0A1F" Foreground="#E9E5FF" KeyDown="OnFindKeyDown" />
-						<TextBlock Text="{Binding FindInfo}" Foreground="#C4B5FD" FontSize="12"
+						<TextBox x:Name="FindBox" Width="200" PlaceholderText="Rechercher..."
+								 Background="{DynamicResource BgMain}" Foreground="{DynamicResource TextMain}"
+								 KeyDown="OnFindKeyDown" />
+						<TextBlock Text="{Binding FindInfo}" Foreground="{DynamicResource TextAccent}" FontSize="12"
 								   VerticalAlignment="Center" MinWidth="80" />
-						<Button Content="↑" Click="OnFindPrevClick" Background="Transparent" Foreground="#C4B5FD" />
-						<Button Content="↓" Click="OnFindNextClick" Background="Transparent" Foreground="#C4B5FD" />
-						<Button Content="✕" Click="OnFindClose" Background="Transparent" Foreground="#C4B5FD" />
+						<Button Content="↑" Click="OnFindPrevClick" Background="Transparent" Foreground="{DynamicResource TextAccent}" />
+						<Button Content="↓" Click="OnFindNextClick" Background="Transparent" Foreground="{DynamicResource TextAccent}" />
+						<Button Content="✕" Click="OnFindClose" Background="Transparent" Foreground="{DynamicResource TextAccent}" />
 					</StackPanel>
 				</Border>
 
-				<GridSplitter Grid.Row="2" ResizeDirection="Rows" Background="#0E0A1F"
+				<GridSplitter Grid.Row="2" ResizeDirection="Rows" Background="{DynamicResource BgMain}"
 							  HorizontalAlignment="Stretch" IsVisible="{Binding IsBottomVisible}" />
 
 				<!-- ===== Panneau du bas ===== -->
-				<Border Grid.Row="3" Background="#12102A" BorderBrush="#2A2350"
+				<Border Grid.Row="3" Background="{DynamicResource BgPanel}" BorderBrush="{DynamicResource Line}"
 						BorderThickness="0,1,0,0" IsVisible="{Binding IsBottomVisible}">
 					<DockPanel>
 						<Grid DockPanel.Dock="Top" Height="32" ColumnDefinitions="Auto,Auto,Auto,*,Auto">
 							<Grid Grid.Column="0">
-								<Border Height="2" VerticalAlignment="Bottom" Background="#A855F7" IsVisible="{Binding IsProblemsTab}" />
+								<Border Height="2" VerticalAlignment="Bottom" Background="{DynamicResource Accent}" IsVisible="{Binding IsProblemsTab}" />
 								<Button Classes="tab" Content="PROBLÈMES" Command="{Binding SetBottomTabCommand}" CommandParameter="0" />
 							</Grid>
 							<Grid Grid.Column="1">
-								<Border Height="2" VerticalAlignment="Bottom" Background="#A855F7" IsVisible="{Binding IsOutputTab}" />
+								<Border Height="2" VerticalAlignment="Bottom" Background="{DynamicResource Accent}" IsVisible="{Binding IsOutputTab}" />
 								<Button Classes="tab" Content="SORTIE" Command="{Binding SetBottomTabCommand}" CommandParameter="1" />
 							</Grid>
 							<Grid Grid.Column="2">
-								<Border Height="2" VerticalAlignment="Bottom" Background="#A855F7" IsVisible="{Binding IsTerminalTab}" />
+								<Border Height="2" VerticalAlignment="Bottom" Background="{DynamicResource Accent}" IsVisible="{Binding IsTerminalTab}" />
 								<Button Classes="tab" Content="TERMINAL" Command="{Binding SetBottomTabCommand}" CommandParameter="2" />
 							</Grid>
 							<Button Grid.Column="4" Content="✕" Command="{Binding CloseBottomCommand}"
-									Background="Transparent" Foreground="#A78BFA" Margin="0,0,8,0" />
+									Background="Transparent" Foreground="{DynamicResource TextAccent}" Margin="0,0,8,0" />
 						</Grid>
 
 						<Grid>
 							<TextBlock IsVisible="{Binding IsProblemsTab}" Margin="16,12" TextWrapping="Wrap"
-									   Foreground="#9B93C4" FontSize="12"
+									   Foreground="{DynamicResource TextMuted}" FontSize="12"
 									   Text="Les diagnostics (erreurs, avertissements) seront fournis par le module des langages (développeur 3)." />
 							<TextBox IsVisible="{Binding IsOutputTab}" Text="{Binding OutputText}"
 									 IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
-									 Background="#12102A" Foreground="#E9E5FF" BorderThickness="0"
+									 Background="{DynamicResource BgPanel}" Foreground="{DynamicResource TextMain}"
+									 BorderThickness="0"
 									 FontFamily="Consolas,Cascadia Mono,monospace" FontSize="12" Padding="12,8" />
 							<TextBlock IsVisible="{Binding IsTerminalTab}" Margin="16,12" TextWrapping="Wrap"
-									   Foreground="#9B93C4" FontSize="12"
+									   Foreground="{DynamicResource TextMuted}" FontSize="12"
 									   Text="Le terminal sera connecté au module du développeur 5 (ITerminalService)." />
 						</Grid>
 					</DockPanel>

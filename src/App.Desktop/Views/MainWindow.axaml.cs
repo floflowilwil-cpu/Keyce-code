@@ -10,6 +10,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using App.Desktop.ViewModels;
 
@@ -23,6 +24,10 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+
+        // Thème sombre au démarrage
+        if (Avalonia.Application.Current is { } app)
+            app.RequestedThemeVariant = ThemeVariant.Dark;
 
         EditorBox.PropertyChanged += (_, e) =>
         {
@@ -42,6 +47,19 @@ public partial class MainWindow : Window
         };
 
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
+    }
+
+    // ---------- Thème clair / sombre ----------
+    private void OnToggleTheme(object? sender, RoutedEventArgs e)
+    {
+        if (Avalonia.Application.Current is not { } app) return;
+        bool goLight = ActualThemeVariant == ThemeVariant.Dark;
+        app.RequestedThemeVariant = goLight ? ThemeVariant.Light : ThemeVariant.Dark;
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.StatusMessage = goLight ? "Thème clair activé" : "Thème sombre activé";
+            vm.Log(vm.StatusMessage);
+        }
     }
 
     // ---------- Affichage / masquage des panneaux ----------
@@ -237,6 +255,7 @@ public partial class MainWindow : Window
             "• Cliquez sur un fichier pour l'ouvrir dans un onglet.\n" +
             "• Barre d'activité : Explorateur, Recherche, Contrôle de code source, Exécuter, Extensions.\n" +
             "• Panneau du bas : Problèmes, Sortie, Terminal (Ctrl+J).\n" +
+            "• Affichage > Thème clair / sombre : change l'apparence.\n" +
             "• Édition, Git, langages, terminal et débogage seront branchés par les modules " +
             "des développeurs 2, 3, 4 et 5.");
 
@@ -270,12 +289,7 @@ public partial class MainWindow : Window
                 Height = 96
             });
         }
-        panel.Children.Add(new TextBlock
-        {
-            Text = body,
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = Brushes.White
-        });
+        panel.Children.Add(new TextBlock { Text = body, TextWrapping = TextWrapping.Wrap });
         var close = new Button { Content = "Fermer", HorizontalAlignment = HorizontalAlignment.Right };
         panel.Children.Add(close);
 
@@ -286,7 +300,6 @@ public partial class MainWindow : Window
             SizeToContent = SizeToContent.Height,
             CanResize = false,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Background = new SolidColorBrush(Color.Parse("#171230")),
             Content = panel
         };
         close.Click += (_, _) => dlg.Close();
@@ -304,12 +317,11 @@ public partial class MainWindow : Window
             Height = 160,
             CanResize = false,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Background = new SolidColorBrush(Color.Parse("#171230")),
             Content = new StackPanel
             {
                 Margin = new Thickness(16),
                 Spacing = 10,
-                Children = { new TextBlock { Text = label, Foreground = Brushes.White }, box, ok }
+                Children = { new TextBlock { Text = label }, box, ok }
             }
         };
         string? result = null;
