@@ -7,6 +7,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.VisualStudio.LanguageServer.Protocol" Version="17.2.8" />
     <PackageReference Include="StreamJsonRpc" Version="2.26.150" />
+    <PackageReference Include="TextMateSharp" Version="2.0.5" />
+    <PackageReference Include="TextMateSharp.Grammars" Version="2.0.5" />
   </ItemGroup>
 
   <PropertyGroup>
