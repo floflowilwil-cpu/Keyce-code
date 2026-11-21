@@ -1,19 +1,18 @@
 
 using System.Collections.Concurrent;
-using System.Diagnostics;
+using System.Text;
 using App.Core.Contracts;
 using App.Core.Models;
+using MiniPty;
 
 namespace App.Integrations.Terminal;
 
 public sealed class TerminalService : ITerminalService
 {
-    private sealed class TerminalSession(Process process)
+    private sealed class TerminalSession(PtySession pty)
     {
-        public Process Process { get; } = process;
-
+        public PtySession Pty { get; } = pty;
         public SemaphoreSlim Gate { get; } = new(1, 1);
-
         public bool IsDisposed { get; set; }
     }
 
@@ -22,7 +21,7 @@ public sealed class TerminalService : ITerminalService
 
     public event EventHandler<TerminalOutputEventArgs>? OutputReceived;
 
-    public Task<TerminalSessionId> StartSessionAsync(
+    public async Task<TerminalSessionId> StartSessionAsync(
         TerminalStartOptions options,
         CancellationToken ct = default)
     {
@@ -30,78 +29,44 @@ public sealed class TerminalService : ITerminalService
         ct.ThrowIfCancellationRequested();
 
         string shell = options.Shell ??
-            (OperatingSystem.IsWindows()
-                ? "powershell.exe"
-                : "/bin/bash");
+            (OperatingSystem.IsWindows() ? "powershell.exe" : "/bin/bash");
 
-        var startInfo = new ProcessStartInfo
+        Dictionary<string, string?>? environment = options.Environment?
+            .ToDictionary(
+                variable => variable.Key,
+                variable => (string?)variable.Value,
+                OperatingSystem.IsWindows()
+                    ? StringComparer.OrdinalIgnoreCase
+                    : StringComparer.Ordinal);
+
+        var startInfo = new PtyStartInfo
         {
             FileName = shell,
             WorkingDirectory = options.WorkingDirectory
                 ?? Environment.CurrentDirectory,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
+            InheritEnvironment = true,
+            Environment = environment,
+            Size = new PtySize(120, 30)
         };
 
-        if (options.Environment is not null)
-        {
-            foreach (var variable in options.Environment)
-            {
-                startInfo.Environment[variable.Key] = variable.Value;
-            }
-        }
-
-        var process = new Process
-        {
-            StartInfo = startInfo
-        };
-
-        bool started = false;
+        PtySession pty = Pty.Start(startInfo);
 
         try
         {
-            if (!process.Start())
-            {
-                throw new InvalidOperationException(
-                    "Impossible de démarrer le terminal.");
-            }
-
-            started = true;
-
             var sessionId = TerminalSessionId.New();
-            var session = new TerminalSession(process);
+            var session = new TerminalSession(pty);
 
             if (!_sessions.TryAdd(sessionId, session))
-            {
                 throw new InvalidOperationException(
-                    "Impossible d'enregistrer la session.");
-            }
+                    "Impossible d'enregistrer la session de terminal.");
 
             _ = MonitorSessionAsync(sessionId, session);
 
-            return Task.FromResult(sessionId);
+            return sessionId;
         }
         catch
         {
-            if (started)
-            {
-                try
-                {
-                    if (!process.HasExited)
-                    {
-                        process.Kill(entireProcessTree: true);
-                    }
-                }
-                catch (InvalidOperationException)
-                {
-                    // Le processus est déjà terminé.
-                }
-            }
-
-            process.Dispose();
+            await pty.DisposeAsync();
             throw;
         }
     }
@@ -115,26 +80,30 @@ public sealed class TerminalService : ITerminalService
         ct.ThrowIfCancellationRequested();
 
         if (!_sessions.TryGetValue(id, out var session))
-        {
             throw new InvalidOperationException(
                 "Session de terminal introuvable.");
-        }
 
         await session.Gate.WaitAsync(ct);
 
         try
         {
-            if (session.IsDisposed || session.Process.HasExited)
+            // Vérification après acquisition du verrou :
+            // la session a pu être supprimée pendant l'attente.
+            if (!_sessions.TryGetValue(id, out var currentSession)
+                || !ReferenceEquals(currentSession, session))
             {
                 throw new InvalidOperationException(
-                    "Le processus du terminal est déjà arrêté.");
+                    "Session de terminal introuvable.");
             }
 
-            await session.Process.StandardInput.WriteAsync(
-                input.AsMemory(),
-                ct);
+            if (session.IsDisposed)
+                throw new InvalidOperationException(
+                    "La session de terminal est déjà arrêtée.");
 
-            await session.Process.StandardInput.FlushAsync(ct);
+            await session.Pty.WriteInputAsync(
+                input,
+                Encoding.UTF8,
+                ct);
         }
         finally
         {
@@ -149,32 +118,17 @@ public sealed class TerminalService : ITerminalService
         ct.ThrowIfCancellationRequested();
 
         if (!_sessions.TryGetValue(id, out var session))
-        {
             return;
-        }
 
         await session.Gate.WaitAsync(ct);
 
         try
         {
             if (session.IsDisposed)
-            {
                 return;
-            }
 
-            if (!session.Process.HasExited)
-            {
-                try
-                {
-                    session.Process.Kill(entireProcessTree: true);
-                }
-                catch (InvalidOperationException)
-                {
-                    // Le processus est déjà terminé.
-                }
-            }
-
-            await session.Process.WaitForExitAsync(ct);
+            session.IsDisposed = true;
+            await session.Pty.DisposeAsync();
         }
         finally
         {
@@ -188,23 +142,15 @@ public sealed class TerminalService : ITerminalService
     {
         try
         {
-            var outputTask = ReadOutputAsync(
-                sessionId,
-                session.Process.StandardOutput);
-
-            var errorTask = ReadOutputAsync(
-                sessionId,
-                session.Process.StandardError);
-
-            var exitTask = session.Process.WaitForExitAsync();
-
-            await Task.WhenAll(outputTask, errorTask, exitTask);
+            await ReadOutputAsync(sessionId, session);
         }
         catch (IOException)
         {
+            // La session PTY peut se fermer pendant la lecture.
         }
         catch (ObjectDisposedException)
         {
+            // La session a été libérée pendant la lecture.
         }
         finally
         {
@@ -217,7 +163,7 @@ public sealed class TerminalService : ITerminalService
                 if (!session.IsDisposed)
                 {
                     session.IsDisposed = true;
-                    session.Process.Dispose();
+                    await session.Pty.DisposeAsync();
                 }
             }
             finally
@@ -229,48 +175,66 @@ public sealed class TerminalService : ITerminalService
 
     private async Task ReadOutputAsync(
         TerminalSessionId sessionId,
-        StreamReader reader)
+        TerminalSession session)
     {
-        char[] buffer = new char[1024];
+        Decoder decoder = Encoding.UTF8.GetDecoder();
 
-        while (true)
+        await foreach (var chunk in session.Pty.ReadOutputAsync())
         {
-            int count = await reader.ReadAsync(
-                buffer.AsMemory(),
-                CancellationToken.None);
+            int maxChars = Encoding.UTF8.GetMaxCharCount(
+                chunk.Data.Length);
 
-            if (count == 0)
+            char[] charBuffer = new char[maxChars];
+
+            int charCount = decoder.GetChars(
+                chunk.Data.Span,
+                charBuffer,
+                flush: false);
+
+            if (charCount > 0)
             {
-                break;
+                string output = new(charBuffer, 0, charCount);
+                RaiseOutputReceived(sessionId, output);
             }
+        }
 
-            string data = new string(buffer, 0, count);
+        char[] finalBuffer = new char[4];
 
-            var handlers = OutputReceived;
+        int finalCharCount = decoder.GetChars(
+            ReadOnlySpan<byte>.Empty,
+            finalBuffer,
+            flush: true);
 
-            if (handlers is null)
-            {
+        if (finalCharCount > 0)
+        {
+            string finalOutput = new(finalBuffer, 0, finalCharCount);
+            RaiseOutputReceived(sessionId, finalOutput);
+        }
+    }
+
+    private void RaiseOutputReceived(
+        TerminalSessionId sessionId,
+        string data)
+    {
+        var handlers = OutputReceived;
+
+        if (handlers is null)
+            return;
+
+        var args = new TerminalOutputEventArgs(sessionId, data);
+
+        foreach (var callback in handlers.GetInvocationList())
+        {
+            if (callback is not EventHandler<TerminalOutputEventArgs> handler)
                 continue;
-            }
 
-            var args = new TerminalOutputEventArgs(sessionId, data);
-
-            foreach (var callback in handlers.GetInvocationList())
+            try
             {
-                if (callback is not EventHandler<TerminalOutputEventArgs> handler)
-                {
-                    continue;
-                }
-
-                try
-                {
-                    handler(this, args);
-                }
-                catch
-                {
-                    // Un abonné défaillant ne doit pas interrompre
-                    // la lecture des sorties du terminal.
-                }
+                handler(this, args);
+            }
+            catch
+            {
+                // Un abonné défaillant ne doit pas interrompre les autres.
             }
         }
     }

@@ -1,4 +1,6 @@
 
+using System.IO;
+using System.Text;
 using App.Core.Models;
 using App.Integrations.Terminal;
 using Xunit;
@@ -11,76 +13,26 @@ public class TerminalServiceTests
     public async Task StartSessionAndSendCommand_ShouldReceiveOutput()
     {
         if (!OperatingSystem.IsWindows())
-        {
             return;
-        }
 
         var service = new TerminalService();
 
         var outputReceived = new TaskCompletionSource<string>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
-        service.OutputReceived += (_, args) =>
-        {
-            if (args.Data.Contains("TERMINAL_TEST_OK"))
-            {
-                outputReceived.TrySetResult(args.Data);
-            }
-        };
-
-        var sessionId = await service.StartSessionAsync(
-            new TerminalStartOptions(Shell: "cmd.exe"));
-
-        await service.SendInputAsync(
-            sessionId,
-            "echo TERMINAL_TEST_OK & exit\r\n");
-
-        var output = await outputReceived.Task.WaitAsync(
-            TimeSpan.FromSeconds(10));
-
-        Assert.Contains("TERMINAL_TEST_OK", output);
-    }
-
-    [Fact]
-    public async Task StopSessionAsync_ShouldStopRunningProcess()
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        var service = new TerminalService();
-
-        var sessionId = await service.StartSessionAsync(
-            new TerminalStartOptions(Shell: "cmd.exe"));
-
-        await service.SendInputAsync(
-            sessionId,
-            "ping 127.0.0.1 -t\r\n");
-
-        await Task.Delay(500);
-
-        await service.StopSessionAsync(sessionId);
-    }
-
-    [Fact]
-    public async Task SendInputWithoutNewline_ShouldWaitForLineEnding()
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        var service = new TerminalService();
-
-        var outputReceived = new TaskCompletionSource<string>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var output = new StringBuilder();
+        var outputLock = new object();
 
         service.OutputReceived += (_, args) =>
         {
-            if (args.Data.Contains("NO_NEWLINE_TEST"))
+            lock (outputLock)
             {
-                outputReceived.TrySetResult(args.Data);
+                output.Append(args.Data);
+
+                string currentOutput = output.ToString();
+
+                if (currentOutput.Contains("80235"))
+                    outputReceived.TrySetResult(currentOutput);
             }
         };
 
@@ -91,20 +43,102 @@ public class TerminalServiceTests
         {
             await service.SendInputAsync(
                 sessionId,
-                "echo NO_NEWLINE_TEST");
+                "set /a 12345+67890 & exit\r\n");
+
+            var result = await outputReceived.Task.WaitAsync(
+                TimeSpan.FromSeconds(10));
+
+            Assert.Contains("80235", result);
+        }
+        finally
+        {
+            await service.StopSessionAsync(sessionId);
+        }
+    }
+
+    [Fact]
+    public async Task StopSessionAsync_ShouldStopRunningProcess()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var service = new TerminalService();
+
+        var sessionId = await service.StartSessionAsync(
+            new TerminalStartOptions(Shell: "cmd.exe"));
+
+        try
+        {
+            await service.SendInputAsync(
+                sessionId,
+                "ping 127.0.0.1 -t\r\n");
+
+            await Task.Delay(500);
+
+            await service.StopSessionAsync(sessionId);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => service.SendInputAsync(
+                    sessionId,
+                    "echo AFTER_STOP\r\n"));
+        }
+        finally
+        {
+            await service.StopSessionAsync(sessionId);
+        }
+    }
+
+    [Fact]
+    public async Task SendInputWithoutNewline_ShouldWaitForLineEnding()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var service = new TerminalService();
+
+        var outputReceived = new TaskCompletionSource<string>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var output = new StringBuilder();
+        var outputLock = new object();
+
+        service.OutputReceived += (_, args) =>
+        {
+            lock (outputLock)
+            {
+                output.Append(args.Data);
+
+                string currentOutput = output.ToString();
+
+                if (currentOutput.Contains("80235"))
+                    outputReceived.TrySetResult(currentOutput);
+            }
+        };
+
+        var sessionId = await service.StartSessionAsync(
+            new TerminalStartOptions(Shell: "cmd.exe"));
+
+        try
+        {
+            await service.SendInputAsync(
+                sessionId,
+                "set /a 12345+67890");
 
             await Task.Delay(300);
 
-            Assert.False(outputReceived.Task.IsCompleted);
+            lock (outputLock)
+            {
+                Assert.DoesNotContain("80235", output.ToString());
+            }
 
             await service.SendInputAsync(
                 sessionId,
                 "\r\nexit\r\n");
 
-            var output = await outputReceived.Task.WaitAsync(
+            var result = await outputReceived.Task.WaitAsync(
                 TimeSpan.FromSeconds(10));
 
-            Assert.Contains("NO_NEWLINE_TEST", output);
+            Assert.Contains("80235", result);
         }
         finally
         {
@@ -116,9 +150,7 @@ public class TerminalServiceTests
     public async Task MultipleSessions_ShouldReceiveIndependentOutput()
     {
         if (!OperatingSystem.IsWindows())
-        {
             return;
-        }
 
         var service = new TerminalService();
 
@@ -128,6 +160,11 @@ public class TerminalServiceTests
         var secondOutput = new TaskCompletionSource<string>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
+        var firstBuffer = new StringBuilder();
+        var secondBuffer = new StringBuilder();
+
+        var outputLock = new object();
+
         var firstSession = await service.StartSessionAsync(
             new TerminalStartOptions(Shell: "cmd.exe"));
 
@@ -136,16 +173,27 @@ public class TerminalServiceTests
 
         service.OutputReceived += (_, args) =>
         {
-            if (args.SessionId == firstSession &&
-                args.Data.Contains("SESSION_A"))
+            lock (outputLock)
             {
-                firstOutput.TrySetResult(args.Data);
-            }
+                if (args.SessionId == firstSession)
+                {
+                    firstBuffer.Append(args.Data);
 
-            if (args.SessionId == secondSession &&
-                args.Data.Contains("SESSION_B"))
-            {
-                secondOutput.TrySetResult(args.Data);
+                    string currentOutput = firstBuffer.ToString();
+
+                    if (currentOutput.Contains("101"))
+                        firstOutput.TrySetResult(currentOutput);
+                }
+
+                if (args.SessionId == secondSession)
+                {
+                    secondBuffer.Append(args.Data);
+
+                    string currentOutput = secondBuffer.ToString();
+
+                    if (currentOutput.Contains("202"))
+                        secondOutput.TrySetResult(currentOutput);
+                }
             }
         };
 
@@ -153,23 +201,85 @@ public class TerminalServiceTests
         {
             await service.SendInputAsync(
                 firstSession,
-                "echo SESSION_A\r\n");
+                "set /a 100+1\r\n");
 
             await service.SendInputAsync(
                 secondSession,
-                "echo SESSION_B\r\n");
+                "set /a 200+2\r\n");
 
             var results = await Task.WhenAll(
                 firstOutput.Task.WaitAsync(TimeSpan.FromSeconds(10)),
                 secondOutput.Task.WaitAsync(TimeSpan.FromSeconds(10)));
 
-            Assert.Contains("SESSION_A", results[0]);
-            Assert.Contains("SESSION_B", results[1]);
+            Assert.Contains("101", results[0]);
+            Assert.Contains("202", results[1]);
         }
         finally
         {
             await service.StopSessionAsync(firstSession);
             await service.StopSessionAsync(secondSession);
+        }
+    }
+
+    [Fact]
+    public async Task NaturalProcessExit_ShouldRemoveSession()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var service = new TerminalService();
+
+        var sessionId = await service.StartSessionAsync(
+            new TerminalStartOptions(Shell: "cmd.exe"));
+
+        try
+        {
+            await service.SendInputAsync(
+                sessionId,
+                "exit\r\n");
+
+            using var timeout = new CancellationTokenSource(
+                TimeSpan.FromSeconds(10));
+
+            while (true)
+            {
+                try
+                {
+                    await service.SendInputAsync(
+                        sessionId,
+                        "\r\n",
+                        timeout.Token);
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Le PTY est fermé, mais le nettoyage de la session
+                    // peut ne pas être terminé.
+                }
+                catch (IOException)
+                {
+                    // Le transport PTY est en cours de fermeture.
+                }
+                catch (InvalidOperationException ex)
+                {
+                    // La session doit avoir été retirée du dictionnaire.
+                    Assert.Equal(
+                        "Session de terminal introuvable.",
+                        ex.Message);
+
+                    return;
+                }
+
+                await Task.Delay(50, timeout.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Assert.Fail(
+                "La session n'a pas été retirée après la fermeture naturelle du processus.");
+        }
+        finally
+        {
+            await service.StopSessionAsync(sessionId);
         }
     }
 }
