@@ -792,6 +792,28 @@ public partial class MainWindow : Window
         _vm.ShowOutput();
     }
 
+    private void OnGitCheckoutBranchClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: GitBranch branch } &&
+            _vm is not null)
+        {
+            _vm.Git.CheckoutBranchCommand.Execute(branch.Name);
+        }
+    }
+
+    private void OnGitMergeBranchClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: GitBranch branch } &&
+            _vm is not null)
+        {
+            _vm.Git.MergeBranchCommand.Execute(branch.Name);
+        }
+    }
+
     // ================================================================
     // Débogage
     // ================================================================
@@ -878,6 +900,17 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnExtensionOpenReadme(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: ExtensionItem item } &&
+            _vm is not null)
+        {
+            _vm.OpenExtensionReadmeCommand.Execute(item.Id);
+        }
+    }
+
     private void OnExtensionUninstall(
         object? sender,
         RoutedEventArgs e)
@@ -886,6 +919,71 @@ public partial class MainWindow : Window
             _vm is not null)
         {
             _vm.UninstallExtensionCommand.Execute(item.Id);
+        }
+    }
+
+    private async void OnUpdateExtension(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (_vm is null)
+            return;
+
+        var folders = await StorageProvider.OpenFolderPickerAsync(
+            new FolderPickerOpenOptions
+            {
+                Title = "Dossier de la nouvelle version (extension.json)",
+                AllowMultiple = false
+            });
+
+        if (folders.Count > 0)
+        {
+            await _vm.UpdateExtensionAsync(
+                folders[0].Path.LocalPath);
+        }
+    }
+
+    private void OnExecuteExtensionCommand(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: CommandInfo cmd } &&
+            _vm is not null)
+        {
+            _vm.ExecuteExtensionCommandCommand.Execute(cmd.Id);
+        }
+    }
+
+    private void OnExtensionUpdateFromCatalog(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: ExtensionItem item } &&
+            _vm is not null)
+        {
+            _vm.UpdateFromCatalogCommand.Execute(item.Id);
+        }
+    }
+
+    private void OnCatalogInstallClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: CatalogExtensionItem item } &&
+            _vm is not null)
+        {
+            _vm.InstallFromCatalogCommand.Execute(item.Id);
+        }
+    }
+
+    private void OnCatalogUpdateClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: CatalogExtensionItem item } &&
+            _vm is not null)
+        {
+            _vm.UpdateFromCatalogCommand.Execute(item.Id);
         }
     }
 

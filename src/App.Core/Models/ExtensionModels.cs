@@ -35,6 +35,11 @@ public sealed record ExtensionUpdateInfo(
     string AvailableVersion,
     string PackagePath);
 
+public sealed record ExtensionDownloadProgress(
+    string ExtensionId,
+    string StatusText,
+    double Percentage);
+
 public sealed class ExtensionChangedEventArgs(ExtensionChangeKind kind, ExtensionInfo extension) : EventArgs
 {
     public ExtensionChangeKind Kind { get; } = kind;
