@@ -10,20 +10,51 @@
         WindowStartupLocation="CenterScreen"
         Background="#0E0A1F">
 
+	<Window.KeyBindings>
+		<KeyBinding Gesture="Ctrl+B" Command="{Binding ToggleSidebarCommand}" />
+		<KeyBinding Gesture="Ctrl+J" Command="{Binding ToggleBottomCommand}" />
+		<KeyBinding Gesture="Ctrl+Shift+E" Command="{Binding ShowPanelCommand}" CommandParameter="0" />
+		<KeyBinding Gesture="Ctrl+Shift+F" Command="{Binding ShowPanelCommand}" CommandParameter="1" />
+	</Window.KeyBindings>
+
 	<Window.Styles>
 		<Style Selector="Path.icon">
-			<Setter Property="Stroke" Value="#A78BFA" />
-			<Setter Property="StrokeThickness" Value="1.8" />
+			<Setter Property="Stroke" Value="#9A8FC9" />
+			<Setter Property="StrokeThickness" Value="1.5" />
 			<Setter Property="StrokeLineCap" Value="Round" />
 			<Setter Property="StrokeJoin" Value="Round" />
 			<Setter Property="Width" Value="24" />
 			<Setter Property="Height" Value="24" />
+		</Style>
+		<Style Selector="Path.active">
+			<Setter Property="Stroke" Value="#F3EFFF" />
 		</Style>
 		<Style Selector="Path.small">
 			<Setter Property="Width" Value="16" />
 			<Setter Property="Height" Value="16" />
 			<Setter Property="RenderTransform" Value="scale(0.66)" />
 			<Setter Property="RenderTransformOrigin" Value="0,0" />
+		</Style>
+		<Style Selector="Button.act">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Width" Value="52" />
+			<Setter Property="Height" Value="48" />
+			<Setter Property="Padding" Value="0" />
+			<Setter Property="CornerRadius" Value="0" />
+			<Setter Property="HorizontalContentAlignment" Value="Center" />
+			<Setter Property="VerticalContentAlignment" Value="Center" />
+		</Style>
+		<Style Selector="Button.act:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="#1E1840" />
+		</Style>
+		<Style Selector="Button.tab">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="Foreground" Value="#C4B5FD" />
+			<Setter Property="FontSize" Value="11" />
+			<Setter Property="Padding" Value="12,0" />
+			<Setter Property="VerticalAlignment" Value="Stretch" />
+			<Setter Property="CornerRadius" Value="0" />
 		</Style>
 		<Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
 			<Setter Property="Background" Value="#0E0A1F" />
@@ -37,15 +68,80 @@
 
 	<DockPanel>
 
-		<Menu DockPanel.Dock="Top" Background="#0E0A1F">
+		<!-- ===== Menus ===== -->
+		<Menu DockPanel.Dock="Top" Background="#0E0A1F" FontSize="13">
+
 			<MenuItem Header="_Fichier">
+				<MenuItem Header="Nouveau fichier" Command="{Binding NotAvailableCommand}" CommandParameter="développeur 2|Nouveau fichier" />
 				<MenuItem Header="_Ouvrir un dossier..." Click="OnOpenFolder" />
+				<Separator />
+				<MenuItem Header="Enregistrer" Command="{Binding NotAvailableCommand}" CommandParameter="développeur 2|Enregistrer" />
+				<MenuItem Header="Fermer le fichier" Command="{Binding CloseFileCommand}" />
 				<Separator />
 				<MenuItem Header="_Quitter" Click="OnExit" />
 			</MenuItem>
+
+			<MenuItem Header="_Édition">
+				<MenuItem Header="Annuler" Command="{Binding NotAvailableCommand}" CommandParameter="développeur 2|Annuler" />
+				<MenuItem Header="Rétablir" Command="{Binding NotAvailableCommand}" CommandParameter="développeur 2|Rétablir" />
+				<Separator />
+				<MenuItem Header="Couper" Command="{Binding NotAvailableCommand}" CommandParameter="développeur 2|Couper" />
+				<MenuItem Header="Copier" Click="OnCopy" IsEnabled="{Binding HasFile}" />
+				<MenuItem Header="Coller" Command="{Binding NotAvailableCommand}" CommandParameter="développeur 2|Coller" />
+				<Separator />
+				<MenuItem Header="Rechercher dans le fichier" InputGesture="Ctrl+F" Click="OnFind" IsEnabled="{Binding HasFile}" />
+				<MenuItem Header="Remplacer" Command="{Binding NotAvailableCommand}" CommandParameter="développeur 2|Remplacer" />
+			</MenuItem>
+
+			<MenuItem Header="_Sélection">
+				<MenuItem Header="Tout sélectionner" Click="OnSelectAll" IsEnabled="{Binding HasFile}" />
+				<MenuItem Header="Ajouter un curseur" Command="{Binding NotAvailableCommand}" CommandParameter="développeur 2|Ajouter un curseur" />
+			</MenuItem>
+
+			<MenuItem Header="_Affichage">
+				<MenuItem Header="Palette de commandes..." IsEnabled="False" />
+				<Separator />
+				<MenuItem Header="Explorateur" InputGesture="Ctrl+Shift+E" Command="{Binding ShowPanelCommand}" CommandParameter="0" />
+				<MenuItem Header="Recherche" InputGesture="Ctrl+Shift+F" Command="{Binding ShowPanelCommand}" CommandParameter="1" />
+				<MenuItem Header="Contrôle de code source" Command="{Binding ShowPanelCommand}" CommandParameter="2" />
+				<MenuItem Header="Exécuter et déboguer" Command="{Binding ShowPanelCommand}" CommandParameter="3" />
+				<MenuItem Header="Extensions" Command="{Binding ShowPanelCommand}" CommandParameter="4" />
+				<Separator />
+				<MenuItem Header="Problèmes" Command="{Binding ShowBottomCommand}" CommandParameter="0" />
+				<MenuItem Header="Sortie" Command="{Binding ShowBottomCommand}" CommandParameter="1" />
+				<MenuItem Header="Terminal" Command="{Binding ShowBottomCommand}" CommandParameter="2" />
+				<MenuItem Header="Afficher / masquer le panneau du bas" InputGesture="Ctrl+J" Command="{Binding ToggleBottomCommand}" />
+				<Separator />
+				<MenuItem Header="Afficher / masquer la barre latérale" InputGesture="Ctrl+B" Command="{Binding ToggleSidebarCommand}" />
+				<MenuItem Header="Thème clair / sombre" IsEnabled="False" />
+			</MenuItem>
+
+			<MenuItem Header="_Atteindre">
+				<MenuItem Header="Aller au fichier..." InputGesture="Ctrl+P" Click="OnGoToFile" />
+				<MenuItem Header="Aller à la ligne..." InputGesture="Ctrl+G" Click="OnGoToLine" IsEnabled="{Binding HasFile}" />
+				<MenuItem Header="Aller à la définition" Command="{Binding NotAvailableCommand}" CommandParameter="développeur 3|Aller à la définition" />
+			</MenuItem>
+
+			<MenuItem Header="E_xécuter">
+				<MenuItem Header="Démarrer le débogage" Command="{Binding NotAvailableCommand}" CommandParameter="développeur 5|Démarrer le débogage" />
+				<MenuItem Header="Exécuter sans débogage" Command="{Binding NotAvailableCommand}" CommandParameter="développeur 5|Exécuter sans débogage" />
+				<MenuItem Header="Arrêter" Command="{Binding NotAvailableCommand}" CommandParameter="développeur 5|Arrêter" />
+			</MenuItem>
+
+			<MenuItem Header="_Terminal">
+				<MenuItem Header="Nouveau terminal" Command="{Binding ShowBottomCommand}" CommandParameter="2" />
+				<MenuItem Header="Exécuter une tâche..." Command="{Binding NotAvailableCommand}" CommandParameter="développeur 5|Exécuter une tâche" />
+			</MenuItem>
+
+			<MenuItem Header="_Aide">
+				<MenuItem Header="Documentation" Click="OnDocumentation" />
+				<MenuItem Header="Raccourcis clavier" Click="OnShortcuts" />
+				<Separator />
+				<MenuItem Header="À propos de Keyce Code" Click="OnAbout" />
+			</MenuItem>
 		</Menu>
 
-		<!-- Barre d'état -->
+		<!-- ===== Barre d'état ===== -->
 		<Border DockPanel.Dock="Bottom" Height="24" Background="#6D28D9">
 			<Grid ColumnDefinitions="*,Auto" Margin="12,0">
 				<TextBlock Text="{Binding StatusMessage}" Foreground="White"
@@ -61,93 +157,137 @@
 			</Grid>
 		</Border>
 
-		<Grid ColumnDefinitions="52,260,4,*">
+		<Grid x:Name="RootGrid" ColumnDefinitions="52,260,4,*">
 
-			<!-- Barre d'activité -->
+			<!-- ===== Barre d'activité ===== -->
 			<Border Grid.Column="0" Background="#14102B">
 				<DockPanel>
-					<Border DockPanel.Dock="Bottom" Height="48" Opacity="0.6">
+					<Border DockPanel.Dock="Bottom" Height="48">
 						<Path Classes="icon" HorizontalAlignment="Center" VerticalAlignment="Center"
-							  Data="M4 21v-7 M4 10V3 M12 21v-9 M12 8V3 M20 21v-5 M20 12V3 M1 14h6 M9 8h6 M17 16h6" />
+							  Data="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M12 4.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15z M12 2v2.5 M12 19.5V22 M2 12h2.5 M19.5 12H22 M4.9 4.9l1.8 1.8 M17.3 17.3l1.8 1.8 M4.9 19.1l1.8-1.8 M17.3 6.7l1.8-1.8" />
 					</Border>
 					<StackPanel>
-						<Border Height="48" BorderBrush="#7C3AED" BorderThickness="2,0,0,0">
-							<Path Classes="icon" HorizontalAlignment="Center" VerticalAlignment="Center"
-								  Data="M6 2h8l4 4v16H6z M14 2v4h4" />
-						</Border>
-						<Border Height="48" Opacity="0.6">
-							<Path Classes="icon" HorizontalAlignment="Center" VerticalAlignment="Center"
-								  Data="M10.5 3a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15z M16 16l5 5" />
-						</Border>
-						<Border Height="48" Opacity="0.6">
-							<Path Classes="icon" HorizontalAlignment="Center" VerticalAlignment="Center"
-								  Data="M6 3v12 M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M18 9a9 9 0 0 1-9 9" />
-						</Border>
-						<Border Height="48" Opacity="0.6">
-							<Path Classes="icon" HorizontalAlignment="Center" VerticalAlignment="Center"
-								  Data="M6 4l14 8-14 8z" />
-						</Border>
-						<Border Height="48" Opacity="0.6">
-							<Path Classes="icon" HorizontalAlignment="Center" VerticalAlignment="Center"
-								  Data="M3 3h8v8H3z M13 3h8v8h-8z M3 13h8v8H3z M13 13h8v8h-8z" />
-						</Border>
+						<Grid Height="48">
+							<Border Width="2" HorizontalAlignment="Left" Background="#A855F7" IsVisible="{Binding IsExplorerActive}" />
+							<Button Classes="act" Command="{Binding ShowPanelCommand}" CommandParameter="0">
+								<Path Classes="icon" Classes.active="{Binding IsExplorerActive}"
+									  Data="M5 7h9l4 4v10H5z M14 7v4h4 M8 7V3h8l4 4v10h-2" />
+							</Button>
+						</Grid>
+						<Grid Height="48">
+							<Border Width="2" HorizontalAlignment="Left" Background="#A855F7" IsVisible="{Binding IsSearchActive}" />
+							<Button Classes="act" Command="{Binding ShowPanelCommand}" CommandParameter="1">
+								<Path Classes="icon" Classes.active="{Binding IsSearchActive}"
+									  Data="M14 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12z M9.8 14.2L4 20" />
+							</Button>
+						</Grid>
+						<Grid Height="48">
+							<Border Width="2" HorizontalAlignment="Left" Background="#A855F7" IsVisible="{Binding IsGitActive}" />
+							<Button Classes="act" Command="{Binding ShowPanelCommand}" CommandParameter="2">
+								<Path Classes="icon" Classes.active="{Binding IsGitActive}"
+									  Data="M6 2.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M6 16.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M18 6.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M6 7.5v9 M18 11.5c0 3.5-12 1.5-12 5" />
+							</Button>
+						</Grid>
+						<Grid Height="48">
+							<Border Width="2" HorizontalAlignment="Left" Background="#A855F7" IsVisible="{Binding IsRunActive}" />
+							<Button Classes="act" Command="{Binding ShowPanelCommand}" CommandParameter="3">
+								<Path Classes="icon" Classes.active="{Binding IsRunActive}"
+									  Data="M5 3.5l10 6.5-10 6.5z M15.5 17.5a2.5 3.5 0 1 0 5 0 2.5 3.5 0 0 0-5 0z M14 16h1.5 M20.5 16H22 M14 20h1.5 M20.5 20H22 M18 14v7" />
+							</Button>
+						</Grid>
+						<Grid Height="48">
+							<Border Width="2" HorizontalAlignment="Left" Background="#A855F7" IsVisible="{Binding IsExtensionsActive}" />
+							<Button Classes="act" Command="{Binding ShowPanelCommand}" CommandParameter="4">
+								<Path Classes="icon" Classes.active="{Binding IsExtensionsActive}"
+									  Data="M3 13h7v7H3z M12 13h7v7h-7z M3 4h7v7H3z M15 2h6v6h-6z" />
+							</Button>
+						</Grid>
 					</StackPanel>
 				</DockPanel>
 			</Border>
 
-			<!-- Explorateur -->
-			<Border Grid.Column="1" Background="#171230">
+			<!-- ===== Barre latérale ===== -->
+			<Border Grid.Column="1" Background="#171230" ClipToBounds="True"
+					IsVisible="{Binding IsSidebarVisible}">
 				<DockPanel>
-					<TextBlock DockPanel.Dock="Top" Text="EXPLORATEUR" FontSize="11"
+					<TextBlock DockPanel.Dock="Top" Text="{Binding PanelTitle}" FontSize="11"
 							   Foreground="#C4B5FD" Margin="16,12,0,4" />
-					<TextBlock DockPanel.Dock="Top" Text="{Binding FolderName}" FontSize="12"
-							   FontWeight="SemiBold" Foreground="#E9E5FF"
-							   Margin="16,4,0,6" IsVisible="{Binding HasFolder}" />
+					<Grid>
 
-					<StackPanel VerticalAlignment="Top" Margin="16,20" Spacing="10"
-								IsVisible="{Binding !HasFolder}">
-						<TextBlock Text="Aucun dossier ouvert" Foreground="#9B93C4" FontSize="12" />
-						<Button Content="Ouvrir un dossier" Click="OnOpenFolder"
-								HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-								Background="#6D28D9" Foreground="White" />
-					</StackPanel>
+						<DockPanel IsVisible="{Binding IsExplorerActive}">
+							<TextBlock DockPanel.Dock="Top" Text="{Binding FolderName}" FontSize="12"
+									   FontWeight="SemiBold" Foreground="#E9E5FF"
+									   Margin="16,4,0,6" IsVisible="{Binding HasFolder}" />
+							<StackPanel DockPanel.Dock="Top" Margin="16,16" Spacing="10"
+										IsVisible="{Binding !HasFolder}">
+								<TextBlock Text="Aucun dossier ouvert" Foreground="#9B93C4" FontSize="12" />
+								<Button Content="Ouvrir un dossier" Click="OnOpenFolder"
+										HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+										Background="#6D28D9" Foreground="White" />
+							</StackPanel>
+							<TreeView ItemsSource="{Binding Nodes}" Background="Transparent"
+									  Margin="4,0" SelectionChanged="OnNodeSelected"
+									  IsVisible="{Binding HasFolder}">
+								<TreeView.ItemTemplate>
+									<TreeDataTemplate DataType="vm:FileNode" ItemsSource="{Binding Children}">
+										<StackPanel Orientation="Horizontal" Spacing="6">
+											<Path Classes="icon small" IsVisible="{Binding IsDirectory}" Stroke="#C084FC"
+												  Data="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+											<Path Classes="icon small" IsVisible="{Binding !IsDirectory}"
+												  Data="M6 2h8l4 4v16H6z M14 2v4h4" />
+											<TextBlock Text="{Binding Name}" Foreground="#E9E5FF"
+													   FontSize="13" VerticalAlignment="Center" />
+										</StackPanel>
+									</TreeDataTemplate>
+								</TreeView.ItemTemplate>
+							</TreeView>
+						</DockPanel>
 
-					<TreeView ItemsSource="{Binding Nodes}" Background="Transparent"
-							  Margin="4,0" SelectionChanged="OnNodeSelected"
-							  IsVisible="{Binding HasFolder}">
-						<TreeView.ItemTemplate>
-							<TreeDataTemplate DataType="vm:FileNode" ItemsSource="{Binding Children}">
-								<StackPanel Orientation="Horizontal" Spacing="6">
-									<Path Classes="icon small" IsVisible="{Binding IsDirectory}"
-										  Stroke="#C084FC"
-										  Data="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-									<Path Classes="icon small" IsVisible="{Binding !IsDirectory}"
-										  Data="M6 2h8l4 4v16H6z M14 2v4h4" />
-									<TextBlock Text="{Binding Name}" Foreground="#E9E5FF"
-											   FontSize="13" VerticalAlignment="Center" />
-								</StackPanel>
-							</TreeDataTemplate>
-						</TreeView.ItemTemplate>
-					</TreeView>
+						<DockPanel IsVisible="{Binding IsSearchActive}">
+							<TextBox DockPanel.Dock="Top" x:Name="SearchBox" Text="{Binding SearchQuery}"
+									 Watermark="Nom de fichier..." Margin="12,6"
+									 Background="#0E0A1F" Foreground="#E9E5FF" />
+							<TextBlock DockPanel.Dock="Top" Text="{Binding SearchInfo}"
+									   Foreground="#9B93C4" FontSize="12" Margin="16,0,0,6" />
+							<ListBox ItemsSource="{Binding SearchResults}" Background="Transparent"
+									 SelectionChanged="OnNodeSelected">
+								<ListBox.ItemTemplate>
+									<DataTemplate DataType="vm:FileNode">
+										<StackPanel>
+											<TextBlock Text="{Binding Name}" Foreground="#E9E5FF" FontSize="13" />
+											<TextBlock Text="{Binding Directory}" Foreground="#7F78A8" FontSize="11"
+													   TextTrimming="CharacterEllipsis" />
+										</StackPanel>
+									</DataTemplate>
+								</ListBox.ItemTemplate>
+							</ListBox>
+						</DockPanel>
+
+						<StackPanel IsVisible="{Binding IsPlaceholderActive}" Margin="16,12">
+							<TextBlock Text="{Binding PlaceholderMessage}" Foreground="#9B93C4"
+									   FontSize="12" TextWrapping="Wrap" />
+						</StackPanel>
+
+					</Grid>
 				</DockPanel>
 			</Border>
 
-			<GridSplitter Grid.Column="2" Background="#0E0A1F" ResizeDirection="Columns" />
+			<GridSplitter Grid.Column="2" Background="#0E0A1F" ResizeDirection="Columns"
+						  IsVisible="{Binding IsSidebarVisible}" />
 
-			<!-- Centre : onglet + contenu -->
-			<Grid Grid.Column="3" RowDefinitions="36,*">
+			<!-- ===== Centre ===== -->
+			<Grid Grid.Column="3" x:Name="CenterGrid" RowDefinitions="36,*,0,0">
 
+				<!-- Onglets -->
 				<Border Grid.Row="0" Background="#14102B">
 					<StackPanel Orientation="Horizontal">
-						<Border Background="#0E0A1F" BorderBrush="#7C3AED"
-								BorderThickness="0,2,0,0" Padding="16,0"
-								IsVisible="{Binding !HasFile}">
+						<Border Background="#0E0A1F" BorderBrush="#A855F7"
+								BorderThickness="0,2,0,0" Padding="16,0" IsVisible="{Binding !HasFile}">
 							<TextBlock Text="Bienvenue" Foreground="#E9E5FF"
 									   VerticalAlignment="Center" FontSize="13" />
 						</Border>
-						<Border Background="#0E0A1F" BorderBrush="#7C3AED"
-								BorderThickness="0,2,0,0" Padding="16,0,6,0"
-								IsVisible="{Binding HasFile}">
+						<Border Background="#0E0A1F" BorderBrush="#A855F7"
+								BorderThickness="0,2,0,0" Padding="16,0,6,0" IsVisible="{Binding HasFile}">
 							<StackPanel Orientation="Horizontal" Spacing="8">
 								<TextBlock Text="{Binding OpenFileName}" Foreground="#E9E5FF"
 										   VerticalAlignment="Center" FontSize="13" />
@@ -158,7 +298,7 @@
 					</StackPanel>
 				</Border>
 
-				<!-- Page d'accueil -->
+				<!-- Accueil -->
 				<Border Grid.Row="1" Background="#0E0A1F" IsVisible="{Binding !HasFile}">
 					<StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10">
 						<Image Source="avares://App.Desktop/Assets/logo.png" Width="150" Height="150" />
@@ -174,7 +314,7 @@
 					</StackPanel>
 				</Border>
 
-				<!-- Affichage du fichier (lecture seule, l'édition = développeur 2) -->
+				<!-- Fichier (lecture seule : l'édition = développeur 2) -->
 				<TextBox Grid.Row="1" x:Name="EditorBox" Text="{Binding FileContent}"
 						 IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
 						 FontFamily="Consolas,Cascadia Mono,monospace" FontSize="14"
@@ -183,8 +323,62 @@
 						 ScrollViewer.HorizontalScrollBarVisibility="Auto"
 						 ScrollViewer.VerticalScrollBarVisibility="Auto"
 						 IsVisible="{Binding HasFile}" />
-			</Grid>
 
+				<!-- Barre de recherche dans le fichier -->
+				<Border Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Top"
+						Margin="0,8,24,0" Padding="8" Background="#1E1840" CornerRadius="6"
+						IsVisible="{Binding IsFindVisible}">
+					<StackPanel Orientation="Horizontal" Spacing="6">
+						<TextBox x:Name="FindBox" Width="200" Watermark="Rechercher..."
+								 Background="#0E0A1F" Foreground="#E9E5FF" KeyDown="OnFindKeyDown" />
+						<TextBlock Text="{Binding FindInfo}" Foreground="#C4B5FD" FontSize="12"
+								   VerticalAlignment="Center" MinWidth="80" />
+						<Button Content="↑" Click="OnFindPrevClick" Background="Transparent" Foreground="#C4B5FD" />
+						<Button Content="↓" Click="OnFindNextClick" Background="Transparent" Foreground="#C4B5FD" />
+						<Button Content="✕" Click="OnFindClose" Background="Transparent" Foreground="#C4B5FD" />
+					</StackPanel>
+				</Border>
+
+				<GridSplitter Grid.Row="2" ResizeDirection="Rows" Background="#0E0A1F"
+							  HorizontalAlignment="Stretch" IsVisible="{Binding IsBottomVisible}" />
+
+				<!-- ===== Panneau du bas ===== -->
+				<Border Grid.Row="3" Background="#12102A" BorderBrush="#2A2350"
+						BorderThickness="0,1,0,0" IsVisible="{Binding IsBottomVisible}">
+					<DockPanel>
+						<Grid DockPanel.Dock="Top" Height="32" ColumnDefinitions="Auto,Auto,Auto,*,Auto">
+							<Grid Grid.Column="0">
+								<Border Height="2" VerticalAlignment="Bottom" Background="#A855F7" IsVisible="{Binding IsProblemsTab}" />
+								<Button Classes="tab" Content="PROBLÈMES" Command="{Binding SetBottomTabCommand}" CommandParameter="0" />
+							</Grid>
+							<Grid Grid.Column="1">
+								<Border Height="2" VerticalAlignment="Bottom" Background="#A855F7" IsVisible="{Binding IsOutputTab}" />
+								<Button Classes="tab" Content="SORTIE" Command="{Binding SetBottomTabCommand}" CommandParameter="1" />
+							</Grid>
+							<Grid Grid.Column="2">
+								<Border Height="2" VerticalAlignment="Bottom" Background="#A855F7" IsVisible="{Binding IsTerminalTab}" />
+								<Button Classes="tab" Content="TERMINAL" Command="{Binding SetBottomTabCommand}" CommandParameter="2" />
+							</Grid>
+							<Button Grid.Column="4" Content="✕" Command="{Binding CloseBottomCommand}"
+									Background="Transparent" Foreground="#A78BFA" Margin="0,0,8,0" />
+						</Grid>
+
+						<Grid>
+							<TextBlock IsVisible="{Binding IsProblemsTab}" Margin="16,12" TextWrapping="Wrap"
+									   Foreground="#9B93C4" FontSize="12"
+									   Text="Les diagnostics (erreurs, avertissements) seront fournis par le module des langages (développeur 3)." />
+							<TextBox IsVisible="{Binding IsOutputTab}" Text="{Binding OutputText}"
+									 IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+									 Background="#12102A" Foreground="#E9E5FF" BorderThickness="0"
+									 FontFamily="Consolas,Cascadia Mono,monospace" FontSize="12" Padding="12,8" />
+							<TextBlock IsVisible="{Binding IsTerminalTab}" Margin="16,12" TextWrapping="Wrap"
+									   Foreground="#9B93C4" FontSize="12"
+									   Text="Le terminal sera connecté au module du développeur 5 (ITerminalService)." />
+						</Grid>
+					</DockPanel>
+				</Border>
+
+			</Grid>
 		</Grid>
 	</DockPanel>
 </Window>
