@@ -13,12 +13,14 @@ public sealed class EditorCommands : IEditorCommands
     private readonly EditorCommandService _commands;
     private readonly EditorLineCommandService _lines;
     private readonly SearchReplaceService _search = new();
+    private readonly CaretNavigation _navigation;
 
     public EditorCommands(IEditorService editor)
     {
         _editor = editor ?? throw new ArgumentNullException(nameof(editor));
         _commands = new EditorCommandService(editor);
         _lines = new EditorLineCommandService(editor);
+        _navigation = new CaretNavigation(editor);
     }
 
     private sealed record Op(int Start, int End, string NewText);
@@ -39,6 +41,20 @@ public sealed class EditorCommands : IEditorCommands
     public void DuplicateLines(DocumentId id) => _lines.DuplicateLines(id);
     public void MoveLinesUp(DocumentId id) => _lines.MoveLinesUp(id);
     public void MoveLinesDown(DocumentId id) => _lines.MoveLinesDown(id);
+
+    // ---- Déplacement du curseur et sélection ----
+
+    public void MoveCarets(DocumentId id, CaretMove move, bool extendSelection = false, int pageSize = 20) =>
+        _navigation.Move(id, move, extendSelection, pageSize);
+
+    public void SetCaret(DocumentId id, TextPosition position, bool extendSelection = false) =>
+        _navigation.SetCaret(id, position, extendSelection);
+
+    public void AddCaret(DocumentId id, TextPosition position) => _navigation.AddCaret(id, position);
+    public void SelectWord(DocumentId id, TextPosition position) => _navigation.SelectWord(id, position);
+    public void SelectLine(DocumentId id, TextPosition position) => _navigation.SelectLine(id, position);
+    public void AddCaretAbove(DocumentId id) => _navigation.AddCaretVertically(id, -1);
+    public void AddCaretBelow(DocumentId id) => _navigation.AddCaretVertically(id, 1);
 
     // ---- Sélection et presse-papiers ----
 
