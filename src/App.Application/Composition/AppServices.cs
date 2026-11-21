@@ -2,6 +2,7 @@ using App.Application.Sync;
 using App.Application.Workspaces;
 using App.Core.Contracts;
 using App.Extensions;
+using App.Extensions.BuiltIn;
 using App.Extensions.Catalog;
 using App.Extensions.Commands;
 using App.Integrations.Ai;
@@ -99,32 +100,53 @@ public sealed class AppServices : IDisposable
         string appData = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "KeyceCode");
-        var extensions = new ExtensionManager(
-            Path.Combine(appData, "extensions"), commandRegistry, git, workspace);
-        var extensionCatalog = new ExtensionCatalogService(
-            Path.Combine(appData, "catalog"), extensions);
+        string catalogRoot = Path.Combine(appData, "catalog");
+        string extensionsRoot = Path.Combine(appData, "extensions");
+        LegacyDemoCleaner.Clean(catalogRoot, extensionsRoot);
 
-        var httpClient = new HttpClient();
+        var extensions = new ExtensionManager(
+            extensionsRoot, commandRegistry, git, workspace);
+
+        var httpClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(90)
+        };
+        httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("KeyceCode/1.0");
+
+        var extensionCatalog = new ExtensionCatalogService(catalogRoot, extensions, httpClient);
         var gitHub = new GitHubService(
             httpClient,
             Environment.GetEnvironmentVariable("GITHUB_TOKEN"));
 
         string? envAiUrl = Environment.GetEnvironmentVariable("KEYCE_AI_ENDPOINT");
-        string aiUrl = string.IsNullOrWhiteSpace(envAiUrl)
-            ? "http://localhost:11434/api/chat"
-            : envAiUrl;
         string? envAiModel = Environment.GetEnvironmentVariable("KEYCE_AI_MODEL");
-        string aiModel = string.IsNullOrWhiteSpace(envAiModel) ? "llama3" : envAiModel;
         string? aiKey = Environment.GetEnvironmentVariable("KEYCE_AI_KEY");
+
+        Uri aiEndpoint = new(string.IsNullOrWhiteSpace(envAiUrl)
+            ? "https://text.pollinations.ai/openai"
+            : envAiUrl);
+        string aiModel = string.IsNullOrWhiteSpace(envAiModel) ? "openai" : envAiModel;
+
         var aiAssistant = new AiAssistantService(
             httpClient,
-            new AiAssistantOptions(new Uri(aiUrl), aiModel, aiKey));
+            new AiAssistantOptions(
+                aiEndpoint,
+                aiModel,
+                aiKey,
+                AllowOfflineFallback: false,
+                FallbackProviders: null));
 
         return new AppServices(
             workspace, files, editor, editorCommands, git, terminal, execution, debugger,
             languages, languageSync, commandRegistry, extensions, extensionCatalog,
             gitHub, aiAssistant, httpClient);
     }
+
+    public string ExtractCodeBlock(string response) =>
+        AiAssistantService.ExtractCodeBlock(response);
+
+    public Task InitializeExtensionsAsync(CancellationToken ct = default) =>
+        Extensions.LoadInstalledAsync(ct);
 
     public void Dispose()
     {

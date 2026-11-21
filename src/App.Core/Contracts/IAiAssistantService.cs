@@ -19,4 +19,10 @@ public interface IAiAssistantService
         string diagnosticMessage,
         string? language = null,
         CancellationToken ct = default);
+
+    Task<string> GenerateOrModifyCodeAsync(
+        string instruction,
+        string? currentCode = null,
+        string? language = null,
+        CancellationToken ct = default);
 }

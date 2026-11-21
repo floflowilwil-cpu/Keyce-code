@@ -204,8 +204,7 @@ public sealed partial class ExtensionManager : IExtensionService
             if (current.State == ExtensionState.Active)
                 await StopAsync(manifest.Id, ct);
 
-            if (Directory.Exists(current.InstallPath))
-                Directory.Delete(current.InstallPath, recursive: true);
+            DeleteDirectorySafe(current.InstallPath);
 
             CopyDirectory(sourceFolder, current.InstallPath);
 
@@ -253,8 +252,7 @@ public sealed partial class ExtensionManager : IExtensionService
             lock (_lock)
                 _extensions.Remove(info.Manifest.Id);
 
-            if (Directory.Exists(info.InstallPath))
-                Directory.Delete(info.InstallPath, recursive: true);
+            DeleteDirectorySafe(info.InstallPath);
 
             await SaveStateAsync(ct);
         }
@@ -341,11 +339,14 @@ public sealed partial class ExtensionManager : IExtensionService
         }
     }
 
-    // Charge la .dll de l'extension (si elle en a une) et appelle ActivateAsync.
+    // Charge la .dll de l'extension (si elle en a une) ou lit package.json (extension Open VSX).
     private async Task StartAsync(ExtensionInfo info, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(info.Manifest.Main))
-            return; // Extension sans code (thème, extraits...) : rien à exécuter.
+        {
+            await StartPackageMetadataExtensionAsync(info, ct);
+            return;
+        }
 
         string mainPath = ResolveMainPath(info);
         var loadContext = new ExtensionLoadContext(info.InstallPath, info.Manifest.Id);
@@ -386,6 +387,30 @@ public sealed partial class ExtensionManager : IExtensionService
         }
     }
 
+    private async Task StartPackageMetadataExtensionAsync(ExtensionInfo info, CancellationToken ct)
+    {
+        string packageJsonPath = Path.Combine(info.InstallPath, "package.json");
+        string marketplaceInfoPath = Path.Combine(info.InstallPath, "marketplace-info.json");
+        if (!File.Exists(packageJsonPath) && !File.Exists(marketplaceInfoPath))
+            return;
+
+        if (!info.Manifest.Permissions.Contains(ExtensionPermissions.Commands))
+            return;
+
+        var context = new ExtensionContext(info, Commands, _git, _workspace);
+        var extension = new PackageMetadataExtension(info, packageJsonPath);
+
+        try
+        {
+            await extension.ActivateAsync(context, ct);
+            _running[info.Manifest.Id] = new RunningExtension(extension, context, LoadContext: null);
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            context.Dispose();
+        }
+    }
+
     private async Task StopAsync(string extensionId, CancellationToken ct)
     {
         if (!_running.Remove(extensionId, out RunningExtension? running))
@@ -402,7 +427,7 @@ public sealed partial class ExtensionManager : IExtensionService
         finally
         {
             running.Context.Dispose();
-            running.LoadContext.Unload();
+            running.LoadContext?.Unload();
         }
     }
 
@@ -589,6 +614,12 @@ public sealed partial class ExtensionManager : IExtensionService
                 ErrorCode.InvalidArgument,
                 $"Le fichier {ManifestFileName} est mal formé.", ex);
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new AppException(
+                ErrorCode.Unavailable,
+                $"Impossible de lire le fichier {ManifestFileName} : {ex.Message}", ex);
+        }
     }
 
     private async Task<HashSet<string>> ReadActiveIdsAsync(CancellationToken ct)
@@ -636,15 +667,49 @@ public sealed partial class ExtensionManager : IExtensionService
         }
     }
 
+    private static void DeleteDirectorySafe(string path)
+    {
+        if (!Directory.Exists(path))
+            return;
+
+        try
+        {
+            Directory.Delete(path, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new AppException(
+                ErrorCode.Unavailable,
+                $"Impossible de supprimer le dossier de l'extension : {ex.Message}", ex);
+        }
+    }
+
     private static void CopyDirectory(string source, string target)
     {
-        Directory.CreateDirectory(target);
+        try
+        {
+            Directory.CreateDirectory(target);
 
-        foreach (string file in Directory.GetFiles(source))
-            File.Copy(file, Path.Combine(target, Path.GetFileName(file)), overwrite: true);
+            foreach (string file in Directory.GetFiles(source))
+            {
+                if (file.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)
+                    || file.EndsWith(".vsix", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
 
-        foreach (string directory in Directory.GetDirectories(source))
-            CopyDirectory(directory, Path.Combine(target, Path.GetFileName(directory)));
+                File.Copy(file, Path.Combine(target, Path.GetFileName(file)), overwrite: true);
+            }
+
+            foreach (string directory in Directory.GetDirectories(source))
+                CopyDirectory(directory, Path.Combine(target, Path.GetFileName(directory)));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new AppException(
+                ErrorCode.Unavailable,
+                $"Erreur d'accès aux fichiers de l'extension : {ex.Message}", ex);
+        }
     }
 
     private void Raise(ExtensionChangeKind kind, ExtensionInfo info) =>
@@ -653,5 +718,143 @@ public sealed partial class ExtensionManager : IExtensionService
     private sealed record RunningExtension(
         IExtension Extension,
         ExtensionContext Context,
-        ExtensionLoadContext LoadContext);
+        ExtensionLoadContext? LoadContext);
+
+    private sealed class PackageMetadataExtension(ExtensionInfo info, string packageJsonPath) : IExtension
+    {
+        public async Task ActivateAsync(IExtensionContext context, CancellationToken ct = default)
+        {
+            List<(string Id, string Title)> commands = [];
+            List<string> contributions = [];
+
+            if (File.Exists(packageJsonPath))
+            {
+                Dictionary<string, string> nls = await LoadNlsAsync(info.InstallPath, ct);
+                try
+                {
+                    string json = await File.ReadAllTextAsync(packageJsonPath, ct);
+                    using JsonDocument doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("contributes", out JsonElement contributes)
+                        && contributes.ValueKind == JsonValueKind.Object)
+                    {
+                        foreach (JsonProperty prop in contributes.EnumerateObject())
+                        {
+                            int count = prop.Value.ValueKind == JsonValueKind.Array
+                                ? prop.Value.GetArrayLength()
+                                : 1;
+                            contributions.Add($"{prop.Name} ({count})");
+                        }
+
+                        if (contributes.TryGetProperty("commands", out JsonElement cmdsProp)
+                            && cmdsProp.ValueKind == JsonValueKind.Array)
+                        {
+                            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                            foreach (JsonElement cmd in cmdsProp.EnumerateArray())
+                            {
+                                if (commands.Count >= 8)
+                                    break;
+
+                                string? cmdId = cmd.TryGetProperty("command", out JsonElement idProp)
+                                    ? idProp.GetString()
+                                    : null;
+                                if (string.IsNullOrWhiteSpace(cmdId) || !seen.Add(cmdId))
+                                    continue;
+
+                                string? rawTitle = cmd.TryGetProperty("title", out JsonElement titleProp)
+                                    ? titleProp.GetString()
+                                    : null;
+                                string resolvedTitle = ResolveTitle(rawTitle, nls, cmdId);
+                                commands.Add((cmdId, resolvedTitle));
+                            }
+                        }
+                    }
+                }
+                catch (JsonException)
+                {
+                }
+            }
+
+            if (commands.Count == 0)
+                commands.Add(($"{info.Manifest.Id}.inspect", "Inspecter le paquet VSIX"));
+
+            string contribSummary = contributions.Count == 0
+                ? "aucune contribution déclarée dans package.json"
+                : string.Join(", ", contributions);
+
+            foreach ((string cmdId, string cmdTitle) in commands)
+            {
+                string capturedId = cmdId;
+                string capturedTitle = cmdTitle;
+                context.RegisterCommand(
+                    capturedId,
+                    $"{info.Manifest.Name} : {capturedTitle}",
+                    async token =>
+                    {
+                        string[] files = Directory.Exists(info.InstallPath)
+                            ? Directory.GetFiles(info.InstallPath, "*", SearchOption.AllDirectories)
+                                .Select(f => Path.GetRelativePath(info.InstallPath, f))
+                                .Where(f => !f.Equals("last-output.txt", StringComparison.OrdinalIgnoreCase))
+                                .Take(15)
+                                .ToArray()
+                            : [];
+
+                        string report =
+                            $"Commande : {capturedId} ({capturedTitle})\n"
+                            + $"Extension : {info.Manifest.Name} v{info.Manifest.Version} ({info.Manifest.Id})\n"
+                            + $"Dossier : {info.InstallPath}\n"
+                            + $"Contributions VS Code : {contribSummary}\n"
+                            + $"Fichiers extraits ({files.Length}) : {string.Join(", ", files)}";
+
+                        await File.WriteAllTextAsync(
+                            Path.Combine(info.InstallPath, "last-output.txt"),
+                            report,
+                            token);
+                    });
+            }
+        }
+
+        public Task DeactivateAsync(CancellationToken ct = default) => Task.CompletedTask;
+
+        private static async Task<Dictionary<string, string>> LoadNlsAsync(
+            string installPath,
+            CancellationToken ct)
+        {
+            string nlsPath = Path.Combine(installPath, "package.nls.json");
+            if (!File.Exists(nlsPath))
+                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            try
+            {
+                string json = await File.ReadAllTextAsync(nlsPath, ct);
+                Dictionary<string, string>? parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+                return parsed is null
+                    ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, string>(parsed, StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception ex) when (ex is JsonException or IOException)
+            {
+                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
+        private static string ResolveTitle(
+            string? rawTitle,
+            Dictionary<string, string> nls,
+            string fallbackId)
+        {
+            if (string.IsNullOrWhiteSpace(rawTitle))
+                return fallbackId;
+
+            if (rawTitle.Length > 2 && rawTitle.StartsWith('%') && rawTitle.EndsWith('%'))
+            {
+                string key = rawTitle[1..^1];
+                if (nls.TryGetValue(key, out string? localized) && !string.IsNullOrWhiteSpace(localized))
+                    return localized;
+
+                return key;
+            }
+
+            return rawTitle;
+        }
+    }
 }

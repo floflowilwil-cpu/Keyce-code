@@ -5,6 +5,8 @@ namespace App.Core.Contracts;
 /// <summary>Catalogue d'extensions : recherche, détection et installation des mises à jour.</summary>
 public interface IExtensionCatalogService
 {
+    event EventHandler<ExtensionDownloadProgress>? DownloadProgressChanged;
+
     Task<IReadOnlyList<ExtensionCatalogEntry>> SearchAsync(
         string? query = null,
         CancellationToken ct = default);
