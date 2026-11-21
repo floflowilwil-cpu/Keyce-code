@@ -10,7 +10,7 @@ using Lsp = Microsoft.VisualStudio.LanguageServer.Protocol;
 namespace App.Languages;
 
 /// <summary>Client LSP : un serveur par langage. Ne lève que des AppException.</summary>
-public sealed class LanguageClient : ILanguageClient, IDisposable
+public sealed partial class LanguageClient : ILanguageClient, IDisposable
 {
     private static readonly TimeSpan InitializeTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
@@ -29,12 +29,17 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
 
     private readonly ConcurrentDictionary<string, LanguageServerProcess> _servers = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<Uri, int> _versions = new();
+    private readonly ConcurrentDictionary<Uri, string> _openLanguages = new();   // document ouvert -> langage
+    private readonly ConcurrentDictionary<string, bool> _incrementalSync = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _startLock = new(1, 1);
 
     public event EventHandler<DiagnosticsPublishedEventArgs> DiagnosticsPublished = delegate { };
 
-    /// <summary>Extra (à proposer pour le contrat) : un serveur s'est arrêté ou a planté. Argument = langage.</summary>
+    /// <summary>Un serveur s'est arrêté ou a planté. Argument = langage.</summary>
     public event EventHandler<string>? ServerDisconnected;
+
+    /// <summary>Un serveur existe-t-il pour ce langage ?</summary>
+    public static bool SupportsLanguage(string languageId) => Servers.ContainsKey(languageId);
 
     // ---------- Contrat ILanguageClient ----------
 
@@ -71,7 +76,9 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
                     Capabilities = new Lsp.ClientCapabilities()
                 };
 
-                await InvokeAsync<Lsp.InitializeResult>(server.Rpc!, "initialize", initParams, InitializeTimeout, ct);
+                var init = await InvokeAsync<JToken?>(server.Rpc!, "initialize", initParams, InitializeTimeout, ct);
+                _incrementalSync[languageId] = SyncKind(init) == 2;
+
                 await NotifyAsync(server.Rpc!, "initialized", new { });
 
                 // Si le serveur tombe plus tard, on le retire pour permettre un redémarrage.
@@ -155,7 +162,9 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
     public Task OpenDocumentAsync(string path, string languageId, string text, int version = 1)
     {
         var uri = ToUri(path);
-        var rpc = GetRpc(path);
+        var rpc = GetServerRpc(languageId);
+
+        _openLanguages[uri] = languageId;
         _versions[uri] = version;
 
         var p = new Lsp.DidOpenTextDocumentParams
@@ -173,6 +182,16 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
 
     /// <summary>Envoie le nouveau texte complet du document au serveur.</summary>
     public Task ChangeDocumentAsync(string path, string newText)
+        => ChangeDocumentAsync(path, [], () => newText, forceFullText: true);
+
+    /// <summary>
+    /// Envoie des modifications dans l'ordre où elles ont été appliquées (chacune dans l'état
+    /// obtenu après la précédente). Si le serveur ne gère pas le mode incrémental, envoie le texte complet.
+    /// </summary>
+    public Task ChangeDocumentAsync(string path, IReadOnlyList<TextEdit> edits, Func<string> fullText)
+        => ChangeDocumentAsync(path, edits, fullText, forceFullText: false);
+
+    private Task ChangeDocumentAsync(string path, IReadOnlyList<TextEdit> edits, Func<string> fullText, bool forceFullText)
     {
         var uri = ToUri(path);
         var rpc = GetRpc(path);
@@ -183,10 +202,23 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
 
         _versions[uri] = ++version;
 
+        var incremental = !forceFullText
+            && _openLanguages.TryGetValue(uri, out var languageId)
+            && _incrementalSync.TryGetValue(languageId, out var supported)
+            && supported;
+
+        var changes = incremental
+            ? edits.Select(e => new Lsp.TextDocumentContentChangeEvent
+              {
+                  Range = ToLspRange(e.Range),
+                  Text = e.NewText
+              }).ToArray()
+            : new[] { new Lsp.TextDocumentContentChangeEvent { Text = fullText() } };
+
         var p = new Lsp.DidChangeTextDocumentParams
         {
             TextDocument = new Lsp.VersionedTextDocumentIdentifier { Uri = uri, Version = version },
-            ContentChanges = [new Lsp.TextDocumentContentChangeEvent { Text = newText }]
+            ContentChanges = changes
         };
         return NotifyAsync(rpc, "textDocument/didChange", p);
     }
@@ -195,7 +227,9 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
     {
         var uri = ToUri(path);
         var rpc = GetRpc(path);
+
         _versions.TryRemove(uri, out _);
+        _openLanguages.TryRemove(uri, out _);
 
         var p = new Lsp.DidCloseTextDocumentParams
         {
@@ -219,23 +253,25 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
     /// <summary>Arrête proprement tous les serveurs démarrés. Ne lève jamais d'erreur.</summary>
     public async Task StopAsync()
     {
-       foreach (var (language, server) in _servers.ToArray())
-{
-    // On retire le serveur d'abord : une fermeture voulue n'est pas une panne.
-    _servers.TryRemove(language, out _);
+        foreach (var (language, server) in _servers.ToArray())
+        {
+            // On retire le serveur d'abord : une fermeture voulue n'est pas une panne.
+            _servers.TryRemove(language, out _);
 
-    try
-    {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-        await server.Rpc!.InvokeWithCancellationAsync<object?>("shutdown", cancellationToken: cts.Token);
-        await server.Rpc.NotifyAsync("exit");
-    }
-    catch
-    {
-        // Serveur déjà tombé ou trop lent : Dispose() le tue.
-    }
-    server.Dispose();
-}
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                await server.Rpc!.InvokeWithCancellationAsync<object?>("shutdown", cancellationToken: cts.Token);
+                await server.Rpc.NotifyAsync("exit");
+            }
+            catch
+            {
+                // Serveur déjà tombé ou trop lent : Dispose() le tue.
+            }
+            server.Dispose();
+        }
+        _versions.Clear();
+        _openLanguages.Clear();
     }
 
     public void Dispose()
@@ -297,21 +333,56 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
 
     // ---------- Outils internes ----------
 
-    /// <summary>Trouve le canal JSON-RPC du serveur qui gère ce fichier.</summary>
+    /// <summary>Canal du serveur qui gère ce fichier : par son langage s'il est ouvert, sinon par son extension.</summary>
     private JsonRpc GetRpc(string path)
     {
+        if (_openLanguages.TryGetValue(ToUri(path), out var openLanguage))
+            return GetServerRpc(openLanguage);
+
         var ext = Path.GetExtension(path);
         if (!Extensions.TryGetValue(ext, out var languageId))
             throw new AppException(ErrorCode.InvalidArgument, $"Type de fichier non pris en charge : '{ext}'.");
 
+        return GetServerRpc(languageId);
+    }
+
+    private JsonRpc GetServerRpc(string languageId)
+    {
         if (_servers.TryGetValue(languageId, out var server) && server.Rpc is { } rpc)
             return rpc;
+
+        if (!Servers.ContainsKey(languageId))
+            throw new AppException(ErrorCode.InvalidArgument, $"Langage non pris en charge : '{languageId}'.");
 
         throw new AppException(ErrorCode.Unavailable,
             $"Le serveur '{languageId}' n'est pas démarré : appelle StartServerAsync d'abord.");
     }
 
-    private static Uri ToUri(string path) => new(Path.GetFullPath(path));
+    // Les documents sans fichier utilisent un chemin « untitled:Untitled-1 » (convention LSP).
+    private static Uri ToUri(string path)
+        => path.StartsWith("untitled:", StringComparison.OrdinalIgnoreCase)
+            ? new Uri(path)
+            : new Uri(Path.GetFullPath(path));
+
+    private static string FromUri(Uri uri) => uri.IsFile ? uri.LocalPath : uri.OriginalString;
+
+    // textDocumentSync : un nombre (0 aucun, 1 texte complet, 2 incrémental) ou un objet { change }.
+    private static int SyncKind(JToken? initializeResult)
+    {
+        var sync = initializeResult?["capabilities"]?["textDocumentSync"];
+        return sync?.Type switch
+        {
+            JTokenType.Integer => (int)sync!,
+            JTokenType.Object => (int?)sync!["change"] ?? 0,
+            _ => 0
+        };
+    }
+
+    private static Lsp.Range ToLspRange(TextRange r) => new()
+    {
+        Start = new Lsp.Position(r.Start.Line, r.Start.Column),
+        End = new Lsp.Position(r.End.Line, r.End.Column)
+    };
 
     private static TextRange ParseRange(JToken r) => new(
         new TextPosition((int)r["start"]!["line"]!, (int)r["start"]!["character"]!),
@@ -346,6 +417,6 @@ public sealed class LanguageClient : ILanguageClient, IDisposable
     {
         [JsonRpcMethod("textDocument/publishDiagnostics", UseSingleObjectParameterDeserialization = true)]
         public void OnPublishDiagnostics(Lsp.PublishDiagnosticParams p)
-            => owner.Raise(p.Uri.LocalPath, (p.Diagnostics ?? []).Select(Map).ToList());
+            => owner.Raise(FromUri(p.Uri), (p.Diagnostics ?? []).Select(Map).ToList());
     }
 }
