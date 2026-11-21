@@ -124,6 +124,10 @@ public partial class MainWindowViewModel : ObservableObject
 
     public bool HasFile => ActiveTab is not null;
 
+    // Services exposés au contrôle d'édition natif de la fenêtre.
+    public IEditorService EditorService => _s.Editor;
+    public IEditorCommands EditorCommands => _s.EditorCommands;
+
     partial void OnActiveTabChanged(
         DocumentTab? oldValue,
         DocumentTab? newValue)
@@ -283,6 +287,14 @@ public partial class MainWindowViewModel : ObservableObject
                 return;
             }
 
+            if (LooksBinary(path))
+            {
+                StatusMessage =
+                    $"« {Path.GetFileName(path)} » est un fichier binaire (PDF, image, exécutable…) : il ne peut pas être modifié comme du texte.";
+                Log(StatusMessage);
+                return;
+            }
+
             var info = await _s.Editor.OpenDocumentAsync(path);
             ActiveTab = AddTab(info);
 
@@ -299,11 +311,176 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Vrai si le fichier n'est pas du texte : signature connue (PDF, ZIP/Office, PNG, JPEG, GIF, exécutable)
+    /// ou octets nuls dans le début du fichier (sauf UTF-16 avec BOM).
+    /// </summary>
+    private static bool LooksBinary(string path)
+    {
+        try
+        {
+            byte[] head = new byte[8192];
+            int n;
+
+            using (var stream = new FileStream(
+                       path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                n = stream.Read(head, 0, head.Length);
+            }
+
+            if (n == 0)
+                return false;
+
+            bool Starts(params byte[] sig) =>
+                n >= sig.Length && head.AsSpan(0, sig.Length).SequenceEqual(sig);
+
+            if (Starts(0xFF, 0xFE) || Starts(0xFE, 0xFF))
+                return false; // UTF-16 avec BOM : c'est du texte
+
+            if (Starts(0x25, 0x50, 0x44, 0x46) ||       // %PDF
+                Starts(0x50, 0x4B, 0x03, 0x04) ||       // ZIP, docx, xlsx
+                Starts(0x89, 0x50, 0x4E, 0x47) ||       // PNG
+                Starts(0xFF, 0xD8, 0xFF) ||             // JPEG
+                Starts(0x47, 0x49, 0x46, 0x38) ||       // GIF
+                Starts(0x4D, 0x5A))                     // exécutable / DLL
+            {
+                return true;
+            }
+
+            return Array.IndexOf(head, (byte)0, 0, n) >= 0;
+        }
+        catch (IOException)
+        {
+            return false; // l'ouverture normale signalera l'erreur
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     [RelayCommand]
     private void NewFile()
     {
         ActiveTab = AddTab(_s.Editor.CreateDocument());
         StatusMessage = "Nouveau fichier";
+    }
+
+    // ---------- Création et suppression dans l'explorateur (IFileService) ----------
+
+    /// <summary>Élément sélectionné dans l'explorateur (sert de dossier cible pour « Nouveau… »).</summary>
+    public FileNode? SelectedNode { get; set; }
+
+    /// <summary>Dossier où créer : l'élément sélectionné (ou son dossier), sinon la racine de l'espace de travail.</summary>
+    private string? CreationFolder() =>
+        SelectedNode is { } n
+            ? (n.IsDirectory ? n.FullPath : n.Directory)
+            : _s.Workspace.Current?.RootPath;
+
+    /// <summary>Null si le nom est valide, sinon le message d'erreur à afficher.</summary>
+    public static string? ValidateName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "Le nom est vide.";
+
+        name = name.Trim();
+
+        if (name is "." or "..")
+            return "Nom invalide.";
+
+        if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            return "Le nom contient un caractère interdit (\\ / : * ? \" < > |).";
+
+        return null;
+    }
+
+    /// <summary>Crée un fichier (puis l'ouvre) ou un dossier dans <paramref name="parentFolder"/> (par défaut : dossier cible).</summary>
+    public async Task<string?> CreateEntryAsync(
+        string name,
+        bool isDirectory,
+        string? parentFolder = null)
+    {
+        string? error = ValidateName(name);
+
+        if (error is not null)
+        {
+            StatusMessage = error;
+            Log(error);
+            return null;
+        }
+
+        string? parent = parentFolder ?? CreationFolder();
+
+        if (parent is null)
+        {
+            StatusMessage = "Ouvrez d'abord un dossier.";
+            return null;
+        }
+
+        string path = Path.Combine(parent, name.Trim());
+
+        try
+        {
+            await _s.Files.CreateAsync(path, isDirectory);
+
+            StatusMessage = (isDirectory ? "Dossier créé : " : "Fichier créé : ") + name.Trim();
+            Log(StatusMessage);
+
+            if (_s.Workspace.Current is not null)
+                RefreshExplorer();
+
+            _ = Git.RefreshCommand.ExecuteAsync(null);
+
+            if (!isDirectory)
+                await OpenPathAsync(path);
+
+            return path;
+        }
+        catch (AppException ex)
+        {
+            ReportError(ex);
+            return null;
+        }
+    }
+
+    /// <summary>Supprime un fichier ou un dossier (les documents ouverts dedans sont fermés d'abord).</summary>
+    public async Task DeleteNodeAsync(FileNode node)
+    {
+        try
+        {
+            foreach (var tab in Tabs
+                         .Where(t => t.Path is { } p && IsInside(p, node.FullPath))
+                         .ToList())
+            {
+                CloseTab(tab);
+            }
+
+            await _s.Files.DeleteAsync(node.FullPath);
+
+            if (ReferenceEquals(SelectedNode, node))
+                SelectedNode = null;
+
+            StatusMessage = "Supprimé : " + node.Name;
+            Log(StatusMessage);
+
+            RefreshExplorer();
+            _ = Git.RefreshCommand.ExecuteAsync(null);
+        }
+        catch (AppException ex)
+        {
+            ReportError(ex);
+        }
+    }
+
+    private static bool IsInside(string path, string root)
+    {
+        if (string.Equals(path, root, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        string prefix = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                        + Path.DirectorySeparatorChar;
+
+        return path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
     }
 
     private DocumentTab AddTab(DocumentInfo info)

@@ -20,6 +20,7 @@ public partial class MainWindowViewModel
         Git.Controller.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == "ErrorMessage") UI(UpdateGitState);
+            else if (e.PropertyName is "StagedFiles" or "UnstagedFiles") UI(UpdateGitCounts);
         };
         _s.Extensions.ExtensionChanged += (_, _) => UI(RefreshExtensions);
     }
@@ -39,6 +40,15 @@ public partial class MainWindowViewModel
     [ObservableProperty] private bool _isGitRepoMissing;
     [ObservableProperty] private bool _hasGitError;
     [ObservableProperty] private string _gitMessage = "";
+
+    [ObservableProperty] private int _stagedCount;
+    [ObservableProperty] private int _unstagedCount;
+
+    private void UpdateGitCounts()
+    {
+        StagedCount = Git.Controller.StagedFiles.Count;
+        UnstagedCount = Git.Controller.UnstagedFiles.Count;
+    }
 
     private void UpdateGitState()
     {

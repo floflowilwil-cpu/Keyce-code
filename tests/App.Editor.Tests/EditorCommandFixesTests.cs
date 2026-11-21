@@ -312,6 +312,8 @@ public sealed class EditorCommandFixesTests
         public void Undo(DocumentId id) => inner.Undo(id);
         public void Redo(DocumentId id) => inner.Redo(id);
         public Task SaveAsync(DocumentId id, CancellationToken ct = default) => inner.SaveAsync(id, ct);
+        public int GetLineCount(DocumentId id) => inner.GetLineCount(id);
+        public string GetLineText(DocumentId id, int line) => inner.GetLineText(id, line);
         public FileEncoding GetEncoding(DocumentId id) => inner.GetEncoding(id);
         public void SetEncoding(DocumentId id, FileEncoding encoding) => inner.SetEncoding(id, encoding);
         public DocumentInfo CreateDocument() => inner.CreateDocument();

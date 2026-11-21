@@ -447,6 +447,7 @@ Icon
 .fseventsd
 .Spotlight-V100
 .TemporaryItems
+
 .Trashes
 .VolumeIcon.icns
 .com.apple.timemachine.donotpresent
@@ -454,6 +455,7 @@ Icon
 #Document de patch
 README-INTEGRATION.txt
 README-PATCH-*.txt
+
 
 # Directories potentially created on remote AFP share
 .AppleDB

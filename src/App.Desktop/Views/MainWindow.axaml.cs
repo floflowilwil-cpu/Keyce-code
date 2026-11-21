@@ -39,25 +39,6 @@ public partial class MainWindow : Window
         if (Avalonia.Application.Current is { } app)
             app.RequestedThemeVariant = ThemeVariant.Dark;
 
-        EditorBox.PropertyChanged += (_, e) =>
-        {
-            if (e.Property == TextBox.CaretIndexProperty &&
-                DataContext is MainWindowViewModel vm)
-            {
-                vm.UpdateCaret(EditorBox.Text, EditorBox.CaretIndex);
-            }
-        };
-
-        EditorBox.AddHandler(
-            TextInputEvent,
-            OnEditorTextInput,
-            RoutingStrategies.Tunnel);
-
-        EditorBox.AddHandler(
-            KeyDownEvent,
-            OnEditorKeyDown,
-            RoutingStrategies.Tunnel);
-
         DataContextChanged += OnDataContextChanged;
         Activated += OnActivated;
         Closed += OnWindowClosed;
@@ -86,8 +67,13 @@ public partial class MainWindow : Window
     private void AttachViewModel(MainWindowViewModel vm)
     {
         vm.PropertyChanged += OnViewModelPropertyChanged;
-        vm.SelectionRequested += OnSelectionRequested;
         vm.ConflictDetected += OnConflictDetected;
+
+        CodeEditor.Attach(vm.EditorService, vm.EditorCommands);
+        CodeEditor.DocumentId = vm.ActiveTab?.Id;
+        CodeEditor.CaretChanged += OnEditorCaretChanged;
+        CodeEditor.SaveRequested += OnEditorSaveRequested;
+        CodeEditor.EditRejected += OnEditorEditRejected;
 
         vm.TerminalService.OutputBytesReceived +=
             OnTerminalOutputBytesReceived;
@@ -96,8 +82,11 @@ public partial class MainWindow : Window
     private void DetachViewModel(MainWindowViewModel vm)
     {
         vm.PropertyChanged -= OnViewModelPropertyChanged;
-        vm.SelectionRequested -= OnSelectionRequested;
         vm.ConflictDetected -= OnConflictDetected;
+
+        CodeEditor.CaretChanged -= OnEditorCaretChanged;
+        CodeEditor.SaveRequested -= OnEditorSaveRequested;
+        CodeEditor.EditRejected -= OnEditorEditRejected;
 
         vm.TerminalService.OutputBytesReceived -=
             OnTerminalOutputBytesReceived;
@@ -161,240 +150,46 @@ public partial class MainWindow : Window
     // Éditeur
     // ================================================================
 
-    private void OnSelectionRequested(int anchor, int active)
+    private void OnEditorCaretChanged(object? sender, EventArgs e)
     {
-        Dispatcher.UIThread.Post(() =>
-        {
-            int length = EditorBox.Text?.Length ?? 0;
-
-            anchor = Math.Clamp(anchor, 0, length);
-            active = Math.Clamp(active, 0, length);
-
-            EditorBox.CaretIndex = active;
-            EditorBox.SelectionStart = anchor;
-            EditorBox.SelectionEnd = active;
-        });
+        if (_vm is null) return;
+        var caret = CodeEditor.CaretPosition;
+        _vm.Position = $"Ln {caret.Line + 1}, Col {caret.Column + 1}";
     }
 
-    private void SyncSelection()
+    private async void OnEditorSaveRequested(object? sender, EventArgs e)
     {
-        _vm?.SyncSelection(
-            EditorBox.SelectionStart,
-            EditorBox.SelectionEnd,
-            EditorBox.CaretIndex);
+        await SaveAsync();
     }
 
-    private void OnEditorTextInput(
-        object? sender,
-        TextInputEventArgs e)
+    private void OnEditorEditRejected(object? sender, string message)
     {
-        if (_vm is null ||
-            !_vm.HasFile ||
-            string.IsNullOrEmpty(e.Text))
-        {
-            return;
-        }
-
-        if (e.Text[0] < ' ')
-            return;
-
-        SyncSelection();
-
-        string text = e.Text;
-
-        _vm.ExecuteEdit(
-            (controller, id) => controller.TypeText(id, text));
-
-        e.Handled = true;
+        if (_vm is not null) _vm.StatusMessage = message;
     }
 
-    private async void OnEditorKeyDown(
-        object? sender,
-        KeyEventArgs e)
-    {
-        if (_vm is null || !_vm.HasFile)
-            return;
-
-        bool ctrl =
-            e.KeyModifiers.HasFlag(KeyModifiers.Control) ||
-            e.KeyModifiers.HasFlag(KeyModifiers.Meta);
-
-        bool shift =
-            e.KeyModifiers.HasFlag(KeyModifiers.Shift);
-
-        bool alt =
-            e.KeyModifiers.HasFlag(KeyModifiers.Alt);
-
-        if (ctrl)
-        {
-            switch (e.Key)
-            {
-                case Key.Z when !shift:
-                    _vm.UndoCommand.Execute(null);
-                    e.Handled = true;
-                    return;
-
-                case Key.Y:
-                case Key.Z when shift:
-                    _vm.RedoCommand.Execute(null);
-                    e.Handled = true;
-                    return;
-
-                case Key.C:
-                    e.Handled = true;
-                    await CopyAsync(cut: false);
-                    return;
-
-                case Key.X:
-                    e.Handled = true;
-                    await CopyAsync(cut: true);
-                    return;
-
-                case Key.V:
-                    e.Handled = true;
-                    await PasteAsync();
-                    return;
-
-                case Key.D when shift:
-                    SyncSelection();
-                    _vm.ExecuteEdit(
-                        (controller, id) => controller.DuplicateLines(id));
-                    e.Handled = true;
-                    return;
-
-                case Key.Oem2 when !shift:
-                    SyncSelection();
-                    _vm.ExecuteEdit(
-                        (controller, id) => controller.CommentLines(id));
-                    e.Handled = true;
-                    return;
-
-                case Key.Oem2 when shift:
-                    SyncSelection();
-                    _vm.ExecuteEdit(
-                        (controller, id) => controller.UncommentLines(id));
-                    e.Handled = true;
-                    return;
-            }
-
-            return;
-        }
-
-        if (alt && e.Key is Key.Up or Key.Down)
-        {
-            SyncSelection();
-
-            if (e.Key == Key.Up)
-            {
-                _vm.ExecuteEdit(
-                    (controller, id) => controller.MoveLinesUp(id));
-            }
-            else
-            {
-                _vm.ExecuteEdit(
-                    (controller, id) => controller.MoveLinesDown(id));
-            }
-
-            e.Handled = true;
-            return;
-        }
-
-        switch (e.Key)
-        {
-            case Key.Back:
-                SyncSelection();
-                _vm.ExecuteEdit(
-                    (controller, id) => controller.Backspace(id));
-                e.Handled = true;
-                break;
-
-            case Key.Delete:
-                SyncSelection();
-                _vm.ExecuteEdit(
-                    (controller, id) => controller.DeleteForward(id));
-                e.Handled = true;
-                break;
-
-            case Key.Enter:
-                SyncSelection();
-                _vm.ExecuteEdit(
-                    (controller, id) => controller.InsertNewLine(id));
-                e.Handled = true;
-                break;
-
-            case Key.Tab:
-                SyncSelection();
-
-                if (shift)
-                {
-                    _vm.ExecuteEdit(
-                        (controller, id) => controller.Outdent(id));
-                }
-                else
-                {
-                    _vm.ExecuteEdit(
-                        (controller, id) => controller.Indent(id));
-                }
-
-                e.Handled = true;
-                break;
-        }
-    }
-
-    private async Task CopyAsync(bool cut)
-    {
-        if (_vm is null)
-            return;
-
-        SyncSelection();
-
-        string? text = cut
-            ? _vm.CutText()
-            : _vm.CopyText();
-
-        if (text is not null && Clipboard is { } clipboard)
-            await clipboard.SetTextAsync(text);
-    }
-
-    private async Task PasteAsync()
-    {
-        if (_vm is null || Clipboard is not { } clipboard)
-            return;
-
-        using var data = await clipboard.TryGetDataAsync();
-
-        string? text = data is null
-            ? null
-            : await data.TryGetTextAsync();
-
-        if (string.IsNullOrEmpty(text))
-            return;
-
-        SyncSelection();
-
-        _vm.ExecuteEdit(
-            (controller, id) => controller.Paste(id, text));
-    }
+    // Le contrôle conserve directement la sélection dans IEditorService.
+    // Cette méthode reste appelée par les commandes de recherche et les menus.
+    private void SyncSelection() { }
 
     private async void OnCut(
         object? sender,
         RoutedEventArgs e)
     {
-        await CopyAsync(cut: true);
+        await CodeEditor.CopyAsync(cut: true);
     }
 
     private async void OnCopy(
         object? sender,
         RoutedEventArgs e)
     {
-        await CopyAsync(cut: false);
+        await CodeEditor.CopyAsync(cut: false);
     }
 
     private async void OnPaste(
         object? sender,
         RoutedEventArgs e)
     {
-        await PasteAsync();
+        await CodeEditor.PasteAsync();
     }
 
     // ================================================================
@@ -434,6 +229,9 @@ public partial class MainWindow : Window
     {
         if (sender is not MainWindowViewModel vm)
             return;
+
+        if (e.PropertyName == nameof(MainWindowViewModel.ActiveTab))
+            CodeEditor.DocumentId = vm.ActiveTab?.Id;
 
         if (e.PropertyName ==
             nameof(MainWindowViewModel.IsSidebarVisible))
@@ -517,6 +315,11 @@ public partial class MainWindow : Window
             OnGoToFile(null, null!);
             e.Handled = true;
         }
+        else if (ctrl && e.Key == Key.O)
+        {
+            e.Handled = true;
+            OnOpenFile(null, null!);
+        }
         else if (ctrl && e.Key == Key.N)
         {
             _vm.NewFileCommand.Execute(null);
@@ -575,9 +378,118 @@ public partial class MainWindow : Window
             e.AddedItems[0] is FileNode node &&
             _vm is not null)
         {
+            _vm.SelectedNode = node;
             await _vm.OpenFileAsync(node);
         }
     }
+
+    // ================================================================
+    // Fichier : ouvrir un fichier, créer un dossier / fichier, supprimer
+    // ================================================================
+
+    private async void OnOpenFile(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (_vm is null)
+            return;
+
+        var files = await StorageProvider.OpenFilePickerAsync(
+            new FilePickerOpenOptions
+            {
+                Title = "Ouvrir un fichier",
+                AllowMultiple = true
+            });
+
+        foreach (var file in files)
+            await _vm.OpenPathAsync(file.Path.LocalPath);
+    }
+
+    private async void OnNewFileHere(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (_vm is null)
+            return;
+
+        // Sans dossier ouvert : fichier sans titre (« Enregistrer sous » demandera l'emplacement).
+        if (!_vm.HasFolder)
+        {
+            _vm.NewFileCommand.Execute(null);
+            return;
+        }
+
+        string? name = await Prompt("Nouveau fichier", "Nom du fichier :");
+
+        if (!string.IsNullOrWhiteSpace(name))
+            await _vm.CreateEntryAsync(name, isDirectory: false);
+    }
+
+    private async void OnNewFolderHere(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (_vm is null)
+            return;
+
+        if (_vm.HasFolder)
+        {
+            string? name = await Prompt("Nouveau dossier", "Nom du dossier :");
+
+            if (!string.IsNullOrWhiteSpace(name))
+                await _vm.CreateEntryAsync(name, isDirectory: true);
+
+            return;
+        }
+
+        // Aucun dossier ouvert : on choisit où le créer, puis on l'ouvre comme espace de travail.
+        var parents = await StorageProvider.OpenFolderPickerAsync(
+            new FolderPickerOpenOptions
+            {
+                Title = "Où créer le nouveau dossier ?",
+                AllowMultiple = false
+            });
+
+        if (parents.Count == 0)
+            return;
+
+        string? folderName = await Prompt("Nouveau dossier", "Nom du dossier :");
+
+        if (string.IsNullOrWhiteSpace(folderName))
+            return;
+
+        string? created = await _vm.CreateEntryAsync(
+            folderName,
+            isDirectory: true,
+            parentFolder: parents[0].Path.LocalPath);
+
+        if (created is not null)
+            await _vm.OpenWorkspaceAsync(created);
+    }
+
+    private async void OnDeleteSelected(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (_vm?.SelectedNode is not { } node)
+            return;
+
+        int choice = await Choose(
+            "Supprimer",
+            node.IsDirectory
+                ? $"Supprimer le dossier « {node.Name} » et tout son contenu ? Cette action est définitive."
+                : $"Supprimer le fichier « {node.Name} » ? Cette action est définitive.",
+            "Supprimer",
+            "Annuler");
+
+        if (choice == 0)
+            await _vm.DeleteNodeAsync(node);
+    }
+
+    private void OnRefreshExplorer(
+        object? sender,
+        RoutedEventArgs e) =>
+        _vm?.RefreshExplorerCommand.Execute(null);
 
     private async void OnProblemSelected(
         object? sender,
@@ -1009,7 +921,7 @@ public partial class MainWindow : Window
             return;
 
         _vm.GoToLine(line);
-        EditorBox.Focus();
+        CodeEditor.Focus();
     }
 
     // ================================================================
