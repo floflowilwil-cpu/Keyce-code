@@ -451,6 +451,10 @@ Icon
 .VolumeIcon.icns
 .com.apple.timemachine.donotpresent
 
+#Document de patch
+README-INTEGRATION.txt
+README-PATCH-*.txt
+
 # Directories potentially created on remote AFP share
 .AppleDB
 .AppleDesktop
