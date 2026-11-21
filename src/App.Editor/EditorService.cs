@@ -70,6 +70,23 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
         lock (doc.SyncRoot) return doc.Text.GetText();
     }
 
+    public int GetLineCount(DocumentId id)
+    {
+        var doc = Get(id);
+        lock (doc.SyncRoot) return doc.Text.LineCount;
+    }
+
+    public string GetLineText(DocumentId id, int line)
+    {
+        var doc = Get(id);
+        lock (doc.SyncRoot)
+        {
+            if (line < 0 || line >= doc.Text.LineCount)
+                throw new AppException(ErrorCode.InvalidArgument, $"Ligne hors document : {line}.");
+            return doc.Text.GetLineText(line);
+        }
+    }
+
     public void ApplyEdit(DocumentId id, TextEdit edit)
     {
         var doc = Get(id);

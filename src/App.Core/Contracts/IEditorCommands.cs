@@ -37,6 +37,33 @@ public interface IEditorCommands
     void MoveLinesUp(DocumentId id);
     void MoveLinesDown(DocumentId id);
 
+    // ---- Déplacement du curseur et sélection ----
+
+    /// <summary>
+    /// Déplace tous les curseurs. Avec extendSelection (Maj+touche), l'ancre reste en place et la sélection s'étend.
+    /// Haut/Bas conservent la colonne souhaitée d'une ligne à l'autre. pageSize : nombre de lignes visibles
+    /// (PageUp / PageDown).
+    /// </summary>
+    void MoveCarets(DocumentId id, CaretMove move, bool extendSelection = false, int pageSize = 20);
+
+    /// <summary>Clic : un seul curseur à cette position (Maj+clic : étend la sélection principale).</summary>
+    void SetCaret(DocumentId id, TextPosition position, bool extendSelection = false);
+
+    /// <summary>Alt+clic : ajoute un curseur à cette position, ou le retire s'il y en a déjà un (le dernier reste).</summary>
+    void AddCaret(DocumentId id, TextPosition position);
+
+    /// <summary>Double-clic : sélectionne le mot (ou la suite d'espaces / de symboles) à cette position.</summary>
+    void SelectWord(DocumentId id, TextPosition position);
+
+    /// <summary>Triple-clic : sélectionne la ligne entière, saut de ligne compris.</summary>
+    void SelectLine(DocumentId id, TextPosition position);
+
+    /// <summary>Ctrl+Alt+Haut : ajoute un curseur au-dessus du curseur le plus haut.</summary>
+    void AddCaretAbove(DocumentId id);
+
+    /// <summary>Ctrl+Alt+Bas : ajoute un curseur sous le curseur le plus bas.</summary>
+    void AddCaretBelow(DocumentId id);
+
     // ---- Sélection et presse-papiers ----
 
     /// <summary>Sélectionne tout le document (un seul curseur).</summary>
