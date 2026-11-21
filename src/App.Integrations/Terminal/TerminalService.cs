@@ -13,6 +13,8 @@ public sealed class TerminalService : ITerminalService
         public Process Process { get; } = process;
 
         public SemaphoreSlim Gate { get; } = new(1, 1);
+
+        public bool IsDisposed { get; set; }
     }
 
     private readonly ConcurrentDictionary<TerminalSessionId, TerminalSession>
@@ -57,6 +59,8 @@ public sealed class TerminalService : ITerminalService
             StartInfo = startInfo
         };
 
+        bool started = false;
+
         try
         {
             if (!process.Start())
@@ -65,13 +69,13 @@ public sealed class TerminalService : ITerminalService
                     "Impossible de démarrer le terminal.");
             }
 
+            started = true;
+
             var sessionId = TerminalSessionId.New();
             var session = new TerminalSession(process);
 
             if (!_sessions.TryAdd(sessionId, session))
             {
-                process.Kill(entireProcessTree: true);
-
                 throw new InvalidOperationException(
                     "Impossible d'enregistrer la session.");
             }
@@ -82,11 +86,14 @@ public sealed class TerminalService : ITerminalService
         }
         catch
         {
-            if (!process.HasExited)
+            if (started)
             {
                 try
                 {
-                    process.Kill(entireProcessTree: true);
+                    if (!process.HasExited)
+                    {
+                        process.Kill(entireProcessTree: true);
+                    }
                 }
                 catch (InvalidOperationException)
                 {
@@ -117,13 +124,13 @@ public sealed class TerminalService : ITerminalService
 
         try
         {
-            if (session.Process.HasExited)
+            if (session.IsDisposed || session.Process.HasExited)
             {
                 throw new InvalidOperationException(
                     "Le processus du terminal est déjà arrêté.");
             }
 
-            await session.Process.StandardInput.WriteLineAsync(
+            await session.Process.StandardInput.WriteAsync(
                 input.AsMemory(),
                 ct);
 
@@ -143,14 +150,18 @@ public sealed class TerminalService : ITerminalService
 
         if (!_sessions.TryGetValue(id, out var session))
         {
-            throw new InvalidOperationException(
-                "Session de terminal introuvable.");
+            return;
         }
 
         await session.Gate.WaitAsync(ct);
 
         try
         {
+            if (session.IsDisposed)
+            {
+                return;
+            }
+
             if (!session.Process.HasExited)
             {
                 try
@@ -159,7 +170,7 @@ public sealed class TerminalService : ITerminalService
                 }
                 catch (InvalidOperationException)
                 {
-                    // Le processus s'est terminé entre-temps.
+                    // Le processus est déjà terminé.
                 }
             }
 
@@ -185,7 +196,9 @@ public sealed class TerminalService : ITerminalService
                 sessionId,
                 session.Process.StandardError);
 
-            await Task.WhenAll(outputTask, errorTask);
+            var exitTask = session.Process.WaitForExitAsync();
+
+            await Task.WhenAll(outputTask, errorTask, exitTask);
         }
         catch (IOException)
         {
@@ -200,7 +213,12 @@ public sealed class TerminalService : ITerminalService
             try
             {
                 _sessions.TryRemove(sessionId, out _);
-                session.Process.Dispose();
+
+                if (!session.IsDisposed)
+                {
+                    session.IsDisposed = true;
+                    session.Process.Dispose();
+                }
             }
             finally
             {
@@ -228,9 +246,32 @@ public sealed class TerminalService : ITerminalService
 
             string data = new string(buffer, 0, count);
 
-            OutputReceived?.Invoke(
-                this,
-                new TerminalOutputEventArgs(sessionId, data));
+            var handlers = OutputReceived;
+
+            if (handlers is null)
+            {
+                continue;
+            }
+
+            var args = new TerminalOutputEventArgs(sessionId, data);
+
+            foreach (var callback in handlers.GetInvocationList())
+            {
+                if (callback is not EventHandler<TerminalOutputEventArgs> handler)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    handler(this, args);
+                }
+                catch
+                {
+                    // Un abonné défaillant ne doit pas interrompre
+                    // la lecture des sorties du terminal.
+                }
+            }
         }
     }
 }
