@@ -28,6 +28,8 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
 
     public event EventHandler<DocumentChangedEventArgs> DocumentChanged = delegate { };
     public event EventHandler<DocumentInfo> DocumentStateChanged = delegate { };
+    public event EventHandler<DocumentInfo> DocumentOpened = delegate { };
+    public event EventHandler<DocumentInfo> DocumentClosed = delegate { };
 
     /// <summary>
     /// Un fichier ouvert a changé sur le disque : rechargé (document propre), en conflit (document modifié)
@@ -43,8 +45,8 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
         string full = Path.GetFullPath(path);
         if (TryGetByPath(full, out var existing)) return Snapshot(existing);
 
-        string text = await _files.ReadAsync(full, ct).ConfigureAwait(false);
-        var doc = new Document(DocumentId.New(), full, text, _time);
+        var content = await ReadContentAsync(full, ct).ConfigureAwait(false);
+        var doc = new Document(DocumentId.New(), full, content.Text, _time) { Encoding = content.Encoding };
 
         _documents[doc.Id] = doc;
         _caretSets.TryAdd(doc.Id, CaretSet.Single(new TextPosition(0, 0)));
@@ -57,7 +59,9 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
         }
 
         StartWatching(doc);
-        return Snapshot(doc);
+        var opened = Snapshot(doc);
+        DocumentOpened(this, opened);
+        return opened;
     }
 
     public string GetText(DocumentId id)
@@ -163,10 +167,12 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
         string text;
         int version;
         string previousDiskText;
+        FileEncoding encoding;
         lock (doc.SyncRoot)
         {
             text = doc.GetTextForSave();
             version = doc.Version;
+            encoding = doc.Encoding;
             previousDiskText = doc.DiskText;
             // Annoncé avant l'écriture : l'écho du watcher ne doit pas passer pour un changement externe.
             doc.DiskText = TextModel.NormalizeNewLines(text);
@@ -175,7 +181,7 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
 
         try
         {
-            await _files.WriteAsync(doc.Path, text, ct).ConfigureAwait(false);
+            await WriteContentAsync(doc.Path, text, encoding, ct).ConfigureAwait(false);
         }
         catch
         {
@@ -196,12 +202,122 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
         if (changedState is not null) DocumentStateChanged(this, changedState);
     }
 
+    public FileEncoding GetEncoding(DocumentId id)
+    {
+        var doc = Get(id);
+        lock (doc.SyncRoot) return doc.Encoding;
+    }
+
+    public void SetEncoding(DocumentId id, FileEncoding encoding)
+    {
+        ArgumentNullException.ThrowIfNull(encoding);
+        if (!FileEncoding.Supported.Contains(encoding))
+            throw new AppException(ErrorCode.InvalidArgument, $"Encodage non pris en charge : {encoding.Name}.");
+
+        var doc = Get(id);
+        DocumentInfo? info = null;
+        lock (doc.SyncRoot)
+        {
+            if (doc.Encoding != encoding)
+            {
+                doc.Encoding = encoding;
+                info = doc.ToInfo();
+            }
+        }
+        if (info is not null) DocumentStateChanged(this, info);
+    }
+
+    /// <summary>Lit un fichier avec détection d'encodage si le service de fichiers le permet (sinon UTF-8).</summary>
+    private async Task<FileContent> ReadContentAsync(string path, CancellationToken ct)
+    {
+        if (_files is IEncodedFileService encoded)
+            return await encoded.ReadWithEncodingAsync(path, ct).ConfigureAwait(false);
+
+        string text = await _files.ReadAsync(path, ct).ConfigureAwait(false);
+        return new FileContent(text, FileEncoding.Utf8);
+    }
+
+    private Task WriteContentAsync(string path, string text, FileEncoding encoding, CancellationToken ct) =>
+        _files is IEncodedFileService encoded
+            ? encoded.WriteAsync(path, text, encoding, ct)
+            : _files.WriteAsync(path, text, ct);
+
+    public DocumentInfo CreateDocument()
+    {
+        var doc = new Document(DocumentId.New(), null, string.Empty, _time);
+        _documents[doc.Id] = doc;
+        _caretSets[doc.Id] = CaretSet.Single(new TextPosition(0, 0));
+        var created = Snapshot(doc);
+        DocumentOpened(this, created);
+        return created;
+    }
+
+    public async Task SaveAsAsync(DocumentId id, string path, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new AppException(ErrorCode.InvalidArgument, "Le chemin du fichier est vide.");
+
+        string full;
+        try
+        {
+            full = Path.GetFullPath(path);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            throw new AppException(ErrorCode.InvalidArgument, $"Chemin invalide : {path}", ex);
+        }
+
+        var doc = Get(id);
+
+        if (TryGetByPath(full, out var other) && other.Id != id)
+            throw new AppException(ErrorCode.Conflict, $"Ce fichier est déjà ouvert dans un autre document : {full}");
+
+        if (doc.Path is not null && PathsEqual(doc.Path, full))
+        {
+            await SaveAsync(id, ct).ConfigureAwait(false);
+            return;
+        }
+
+        string text;
+        int version;
+        FileEncoding encoding;
+        lock (doc.SyncRoot)
+        {
+            text = doc.GetTextForSave();
+            version = doc.Version;
+            encoding = doc.Encoding;
+        }
+
+        await WriteContentAsync(full, text, encoding, ct).ConfigureAwait(false);
+
+        string? oldPath;
+        DocumentInfo info;
+        lock (doc.SyncRoot)
+        {
+            oldPath = doc.Path;
+            doc.SetPath(full);
+            doc.DiskText = TextModel.NormalizeNewLines(text);
+            doc.ConflictDiskText = null;
+            if (doc.Version == version) doc.MarkSaved(); // sinon : modifié pendant l'écriture, il reste « modifié »
+            info = doc.ToInfo();
+        }
+
+        if (oldPath is not null) _byPath.TryRemove(oldPath, out _);
+        _byPath.TryAdd(full, id);
+
+        if (_watchers.TryRemove(id, out var oldWatcher)) oldWatcher.Dispose();
+        StartWatching(doc);
+
+        DocumentStateChanged(this, info);
+    }
+
     public bool CloseDocument(DocumentId id)
     {
         if (!_documents.TryRemove(id, out var doc)) return false;
         _caretSets.TryRemove(id, out _);
         if (_watchers.TryRemove(id, out var watcher)) watcher.Dispose();
         if (doc.Path is not null) _byPath.TryRemove(doc.Path, out _);
+        DocumentClosed(this, Snapshot(doc));
         return true;
     }
 
@@ -224,10 +340,10 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
         await doc.ExternalCheckLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            string raw;
+            FileContent content;
             try
             {
-                raw = await _files.ReadAsync(doc.Path, ct).ConfigureAwait(false);
+                content = await ReadContentAsync(doc.Path, ct).ConfigureAwait(false);
             }
             catch (AppException ex) when (ex.Code == ErrorCode.NotFound)
             {
@@ -239,6 +355,7 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
                 return; // fichier verrouillé ou en cours d'écriture : le prochain événement réessaiera
             }
 
+            string raw = content.Text;
             string disk = TextModel.NormalizeNewLines(raw);
 
             IReadOnlyList<TextEdit>? edits = null;
@@ -252,6 +369,7 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
 
                 if (!doc.IsDirty)
                 {
+                    doc.Encoding = content.Encoding;
                     var applied = doc.ReplaceFromDisk(raw);
                     if (applied is not null)
                     {
@@ -286,13 +404,15 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
         await doc.ExternalCheckLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            string raw = await _files.ReadAsync(doc.Path, ct).ConfigureAwait(false);
+            var content = await ReadContentAsync(doc.Path, ct).ConfigureAwait(false);
+            string raw = content.Text;
 
             TextEdit? applied;
             DocumentInfo? changedState;
             lock (doc.SyncRoot)
             {
                 bool wasDirty = doc.IsDirty;
+                doc.Encoding = content.Encoding;
                 applied = doc.ReplaceFromDisk(raw);
                 if (applied is not null) NormalizeCarets(id, doc);
                 changedState = wasDirty ? doc.ToInfo() : null;
@@ -318,7 +438,7 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
         await doc.ExternalCheckLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            string raw = await _files.ReadAsync(doc.Path, ct).ConfigureAwait(false);
+            string raw = (await ReadContentAsync(doc.Path, ct).ConfigureAwait(false)).Text;
             lock (doc.SyncRoot)
             {
                 doc.DiskText = TextModel.NormalizeNewLines(raw);

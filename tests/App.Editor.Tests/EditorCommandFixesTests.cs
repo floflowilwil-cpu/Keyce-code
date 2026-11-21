@@ -312,6 +312,10 @@ public sealed class EditorCommandFixesTests
         public void Undo(DocumentId id) => inner.Undo(id);
         public void Redo(DocumentId id) => inner.Redo(id);
         public Task SaveAsync(DocumentId id, CancellationToken ct = default) => inner.SaveAsync(id, ct);
+        public FileEncoding GetEncoding(DocumentId id) => inner.GetEncoding(id);
+        public void SetEncoding(DocumentId id, FileEncoding encoding) => inner.SetEncoding(id, encoding);
+        public DocumentInfo CreateDocument() => inner.CreateDocument();
+        public Task SaveAsAsync(DocumentId id, string path, CancellationToken ct = default) => inner.SaveAsAsync(id, path, ct);
         public bool CloseDocument(DocumentId id) => inner.CloseDocument(id);
         public DocumentInfo GetInfo(DocumentId id) => inner.GetInfo(id);
         public IReadOnlyList<DocumentInfo> GetOpenDocuments() => inner.GetOpenDocuments();
@@ -322,6 +326,16 @@ public sealed class EditorCommandFixesTests
         {
             add => inner.DocumentChanged += value;
             remove => inner.DocumentChanged -= value;
+        }
+        public event EventHandler<DocumentInfo> DocumentOpened
+        {
+            add => inner.DocumentOpened += value;
+            remove => inner.DocumentOpened -= value;
+        }
+        public event EventHandler<DocumentInfo> DocumentClosed
+        {
+            add => inner.DocumentClosed += value;
+            remove => inner.DocumentClosed -= value;
         }
         public event EventHandler<DocumentInfo> DocumentStateChanged
         {
