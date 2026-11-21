@@ -33,6 +33,7 @@ public sealed class Document
         LanguageId = LanguageIds.FromPath(path);
         LineEnding = LineEndingDetector.Detect(text);
         Text = new TextModel(text);
+        DiskText = TextModel.NormalizeNewLines(text);
         _time = time ?? TimeProvider.System;
     }
 
@@ -44,8 +45,27 @@ public sealed class Document
     public TextModel Text { get; }
     public int Version { get; private set; }
     public bool IsDirty => _savedDepth != _undo.Count;
+
+    /// <summary>
+    /// Dernier contenu connu du fichier sur le disque (fins de ligne normalisées en \n) :
+    /// ce qui a été lu à l'ouverture, au rechargement, ou écrit lors de la dernière sauvegarde.
+    /// Sert à distinguer une vraie modification externe de l'écho de notre propre sauvegarde.
+    /// </summary>
+    public string DiskText { get; set; }
+
+    /// <summary>Contenu disque ayant déjà provoqué un conflit signalé (évite de le signaler en boucle).</summary>
+    public string? ConflictDiskText { get; set; }
+
+    /// <summary>Verrou qui sérialise les vérifications de changements externes de ce document.</summary>
+    public SemaphoreSlim ExternalCheckLock { get; } = new(1, 1);
     public bool CanUndo => _undo.Count > 0;
     public bool CanRedo => _redo.Count > 0;
+
+    /// <summary>
+    /// Décalages où placer les curseurs après le dernier <see cref="Undo"/> ou <see cref="Redo"/> :
+    /// la fin du texte restauré (Undo) ou réinséré (Redo), un curseur par modification pour un lot multi-curseurs.
+    /// </summary>
+    public IReadOnlyList<int> CaretOffsetsAfterHistoryStep { get; private set; } = Array.Empty<int>();
 
     public DocumentInfo ToInfo() => new(Id, Path, LanguageId, IsDirty);
 
@@ -59,6 +79,36 @@ public sealed class Document
     {
         _savedDepth = _undo.Count;
         _breakCoalescing = true;
+    }
+
+    /// <summary>
+    /// Remplace tout le contenu par celui du disque : l'historique est effacé et le document redevient propre.
+    /// Retourne la modification globale appliquée, ou null si le texte est identique.
+    /// </summary>
+    public TextEdit? ReplaceFromDisk(string rawDiskText)
+    {
+        ArgumentNullException.ThrowIfNull(rawDiskText);
+
+        string normalized = TextModel.NormalizeNewLines(rawDiskText);
+        TextEdit? applied = null;
+
+        if (Text.GetText() != normalized)
+        {
+            var range = new TextRange(new TextPosition(0, 0), Text.GetPosition(Text.Length));
+            Text.Replace(0, Text.Length, normalized);
+            Version++;
+            applied = new TextEdit(range, normalized);
+        }
+
+        LineEnding = LineEndingDetector.Detect(rawDiskText);
+        DiskText = normalized;
+        ConflictDiskText = null;
+        _undo.Clear();
+        _redo.Clear();
+        _savedDepth = 0;
+        _breakCoalescing = true;
+        CaretOffsetsAfterHistoryStep = Array.Empty<int>();
+        return applied;
     }
 
     public TextEdit? Apply(TextEdit edit)
@@ -157,6 +207,7 @@ public sealed class Document
             Version++;
         }
         _redo.Add(group);
+        CaretOffsetsAfterHistoryStep = ComputeCaretOffsets(group, undo: true);
         _breakCoalescing = true;
         return edits;
     }
@@ -176,6 +227,7 @@ public sealed class Document
             Version++;
         }
         _undo.Add(group);
+        CaretOffsetsAfterHistoryStep = ComputeCaretOffsets(group, undo: false);
         _breakCoalescing = true;
         return edits;
     }
@@ -228,6 +280,30 @@ public sealed class Document
         group.Changes.Add(change);
         _undo.Add(group);
         _breakCoalescing = false;
+    }
+
+    private static IReadOnlyList<int> ComputeCaretOffsets(UndoGroup group, bool undo)
+    {
+        // Frappes regroupées ou modification unique : un seul curseur.
+        if (group.IsTyping || group.Changes.Count == 1)
+        {
+            return undo
+                ? [group.Changes[0].Offset + group.Changes[0].Removed.Length]
+                : [group.Changes[^1].Offset + group.Changes[^1].Inserted.Length];
+        }
+
+        // Lot multi-curseurs : les modifications sont enregistrées de droite à gauche, dans les décalages
+        // d'origine. On place un curseur par modification, de gauche à droite.
+        var offsets = new SortedSet<int>();
+        int shift = 0;
+        foreach (var c in group.Changes.OrderBy(c => c.Offset))
+        {
+            offsets.Add(undo
+                ? c.Offset + c.Removed.Length
+                : c.Offset + shift + c.Inserted.Length);
+            shift += c.Inserted.Length - c.Removed.Length;
+        }
+        return offsets.ToList();
     }
 
     private void ClearRedoBranch()

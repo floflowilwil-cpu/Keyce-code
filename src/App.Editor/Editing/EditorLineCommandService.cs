@@ -14,27 +14,43 @@ public sealed class EditorLineCommandService
     public EditorLineCommandService(IEditorService editor) =>
         _editor = editor ?? throw new ArgumentNullException(nameof(editor));
 
-    /// <summary>Ajoute le préfixe aux lignes sélectionnées ou aux lignes des curseurs.</summary>
+    /// <summary>Ajoute le préfixe (après l'indentation) aux lignes sélectionnées ou aux lignes des curseurs.</summary>
     public void CommentLines(DocumentId id, string prefix = "//")
     {
         ArgumentException.ThrowIfNullOrEmpty(prefix);
-        TransformLines(id, (line, _) => prefix + line);
+        // Le préfixe est placé après l'indentation de la ligne : l'indentation reste alignée et
+        // UncommentLines retrouve exactement le texte d'origine.
+        TransformLines(id, (line, _) =>
+        {
+            int indent = 0;
+            while (indent < line.Length && line[indent] is ' ' or '\t') indent++;
+            return line[..indent] + prefix + line[indent..];
+        });
     }
 
-    /// <summary>Retire le préfixe au début des lignes sélectionnées ou concernées.</summary>
+    /// <summary>Retire le préfixe (et un espace qui le suit) des lignes sélectionnées ou concernées, après leur indentation.</summary>
     public void UncommentLines(DocumentId id, string prefix = "//")
     {
         ArgumentException.ThrowIfNullOrEmpty(prefix);
         TransformLines(id, (line, _) =>
-            line.StartsWith(prefix, StringComparison.Ordinal) ? line[prefix.Length..] : line);
+        {
+            // Le préfixe peut suivre l'indentation ; un espace unique après le préfixe est retiré avec lui.
+            int indent = 0;
+            while (indent < line.Length && line[indent] is ' ' or '\t') indent++;
+            if (!line.AsSpan(indent).StartsWith(prefix, StringComparison.Ordinal)) return line;
+
+            int after = indent + prefix.Length;
+            if (after < line.Length && line[after] == ' ') after++;
+            return line[..indent] + line[after..];
+        });
     }
 
     /// <summary>Duplique chaque ligne concernée une seule fois, même avec plusieurs curseurs.</summary>
     public void DuplicateLines(DocumentId id)
     {
-        var model = new TextModel(_editor.GetText(id));
+        var model = LineSelection.GetModel(_editor, id);
         var carets = _editor.GetCaretSet(id);
-        var lines = GetSelectedLines(model, carets);
+        var lines = LineSelection.GetLines(model, carets);
         var edits = new List<TextEdit>();
 
         foreach (int line in lines.Order())
@@ -60,8 +76,8 @@ public sealed class EditorLineCommandService
 
     private void TransformLines(DocumentId id, Func<string, int, string> transform)
     {
-        var model = new TextModel(_editor.GetText(id));
-        var lines = GetSelectedLines(model, _editor.GetCaretSet(id));
+        var model = LineSelection.GetModel(_editor, id);
+        var lines = LineSelection.GetLines(model, _editor.GetCaretSet(id));
         var edits = new List<TextEdit>();
         foreach (int line in lines.Order())
         {
@@ -77,45 +93,55 @@ public sealed class EditorLineCommandService
 
     private void MoveLines(DocumentId id, int direction)
     {
-        var model = new TextModel(_editor.GetText(id));
-        var lines = GetSelectedLines(model, _editor.GetCaretSet(id));
+        var model = LineSelection.GetModel(_editor, id);
+        var carets = _editor.GetCaretSet(id);
+        var lines = LineSelection.GetLines(model, carets);
         if (lines.Count == 0) return;
 
-        // Les blocs contigus sont déplacés ensemble. Les blocs sont traités dans
-        // l'ordre qui évite qu'un déplacement change les indices des suivants.
-        var ordered = direction < 0 ? lines.Order().ToArray() : lines.OrderByDescending(x => x).ToArray();
-        string[] current = Enumerable.Range(0, model.LineCount).Select(model.GetLineText).ToArray();
-
-        foreach (int line in ordered)
+        // Chaque bloc de lignes contiguës échange sa place avec la ligne voisine : une seule édition par bloc,
+        // limitée aux lignes concernées (le reste du document n'est pas réécrit).
+        var edits = new List<TextEdit>();
+        var moved = new List<(int Start, int End)>();
+        foreach (var (start, end) in LineSelection.ToRuns(lines))
         {
-            int target = line + direction;
-            if (target < 0 || target >= current.Length || lines.Contains(target)) continue;
-            (current[line], current[target]) = (current[target], current[line]);
+            if (direction < 0 ? start == 0 : end == model.LineCount - 1) continue;
+
+            int from = direction < 0 ? start - 1 : start;
+            int to = direction < 0 ? end : end + 1;
+            string neighbor = model.GetLineText(direction < 0 ? start - 1 : end + 1);
+            string block = string.Join("\n", Enumerable.Range(start, end - start + 1).Select(model.GetLineText));
+            string replacement = direction < 0 ? block + "\n" + neighbor : neighbor + "\n" + block;
+
+            edits.Add(new TextEdit(
+                new TextRange(new TextPosition(from, 0), new TextPosition(to, model.GetLineLength(to))),
+                replacement));
+            moved.Add((start, end));
         }
+        if (edits.Count == 0) return;
 
-        string updated = string.Join("\n", current);
-        if (updated == model.GetText()) return;
+        var shifted = carets.Carets.Select(c =>
+        {
+            var boundary = LineSelection.GetBoundaryEnd(c);
+            return new Caret(
+                ShiftLine(c.Position, c.Position == boundary, moved, direction),
+                ShiftLine(c.Anchor, c.Anchor == boundary, moved, direction));
+        }).ToList();
 
-        var whole = new TextRange(new TextPosition(0, 0), model.GetPosition(model.Length));
-        _editor.ApplyEdits(id, [new TextEdit(whole, updated)]);
+        _editor.ApplyEdits(id, edits);
+        _editor.SetCaretSet(id, new CaretSet(shifted, carets.PrimaryIndex));
     }
 
-    private static HashSet<int> GetSelectedLines(TextModel model, CaretSet carets)
+    /// <summary>Les curseurs suivent les lignes déplacées (y compris la fin de sélection en colonne 0).</summary>
+    private static TextPosition ShiftLine(
+        TextPosition position, bool isBoundary, List<(int Start, int End)> moved, int direction)
     {
-        var result = new HashSet<int>();
-        foreach (var caret in carets.Carets)
+        foreach (var (start, end) in moved)
         {
-            int first = Math.Min(caret.Position.Line, caret.Anchor.Line);
-            int last = Math.Max(caret.Position.Line, caret.Anchor.Line);
-            // Une sélection qui se termine exactement au début d'une ligne
-            // n'inclut pas cette dernière ligne.
-            if (caret.HasSelection && caret.Position.Column == 0 && caret.Position.Line > caret.Anchor.Line)
-                last--;
-            if (caret.HasSelection && caret.Anchor.Column == 0 && caret.Anchor.Line > caret.Position.Line)
-                last--;
-            for (int line = Math.Max(0, first); line <= Math.Min(model.LineCount - 1, last); line++)
-                result.Add(line);
+            if (position.Line >= start && position.Line <= end)
+                return new TextPosition(position.Line + direction, position.Column);
+            if (isBoundary && position.Line == end + 1 && position.Column == 0)
+                return new TextPosition(position.Line + direction, 0);
         }
-        return result;
+        return position;
     }
 }

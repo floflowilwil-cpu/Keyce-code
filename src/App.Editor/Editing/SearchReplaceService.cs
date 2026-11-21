@@ -5,17 +5,6 @@ using App.Core.Models;
 namespace App.Editor.Editing;
 
 /// <summary>
-/// Options de recherche dans un document.
-/// </summary>
-public sealed record SearchOptions(
-    bool MatchCase = false,
-    bool WholeWord = false,
-    bool UseRegex = false,
-    bool WrapAround = true,
-    int RegexTimeoutMilliseconds = 1000
-);
-
-/// <summary>
 /// Résultat d'une recherche dans le document.
 /// Les offsets sont exprimés en unités UTF-16.
 /// </summary>
@@ -89,23 +78,32 @@ public sealed class SearchReplaceService
         SearchOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(pattern);
 
         if (startOffset < 0 || startOffset > document.Length)
             throw new ArgumentOutOfRangeException(nameof(startOffset));
 
         options ??= new SearchOptions();
+        if (pattern.Length == 0) return null;
 
-        var matches = FindAll(document, pattern, options);
+        // On s'arrête à la première occurrence au lieu de chercher (et d'allouer) toutes les occurrences.
+        string text = document.GetText();
+        Regex regex = BuildRegex(pattern, options);
 
-        var next = matches.FirstOrDefault(
-            m => m.Offset >= startOffset);
+        try
+        {
+            Match match = regex.Match(text, startOffset);
+            if (match.Success) return new SearchMatch(match);
+            if (!options.WrapAround) return null;
 
-        if (next != null)
-            return next;
-
-        return options.WrapAround
-            ? matches.FirstOrDefault()
-            : null;
+            match = regex.Match(text, 0);
+            return match.Success ? new SearchMatch(match) : null;
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            throw new InvalidOperationException(
+                "La recherche a dépassé le délai autorisé.");
+        }
     }
 
     /// <summary>
@@ -221,8 +219,9 @@ public sealed class SearchReplaceService
                 $@"(?<![\p{{L}}\p{{N}}_])(?:{expression})(?![\p{{L}}\p{{N}}_])";
         }
 
+        // Multiline : ^ et $ désignent le début et la fin de chaque ligne, comme dans un éditeur.
         RegexOptions regexOptions =
-            RegexOptions.CultureInvariant;
+            RegexOptions.CultureInvariant | RegexOptions.Multiline;
 
         if (!options.MatchCase)
             regexOptions |= RegexOptions.IgnoreCase;

@@ -63,84 +63,85 @@ public sealed class EditorCommandService
         });
     }
 
-    /// <summary>Insère une tabulation à chaque curseur, en remplaçant les sélections.</summary>
+    /// <summary>
+    /// Sans sélection multi-lignes : insère l'indentation à chaque curseur (en remplaçant les sélections).
+    /// Avec une sélection sur plusieurs lignes : indente chaque ligne concernée (les lignes vides sont ignorées).
+    /// </summary>
     public void Indent(DocumentId documentId, string indentation = "\t")
     {
         ArgumentException.ThrowIfNullOrEmpty(indentation);
         if (indentation.Contains('\r') || indentation.Contains('\n'))
             throw new ArgumentException("L'indentation ne peut pas contenir de saut de ligne.", nameof(indentation));
 
-        Execute(documentId, (model, caret, start, end) =>
-            new PlannedOperation(start, end, indentation));
+        var model = LineSelection.GetModel(_editor, documentId);
+        var carets = _editor.GetCaretSet(documentId);
+        var lines = LineSelection.GetLines(model, carets);
+
+        bool hasMultiLineSelection = carets.Carets.Any(c => c.HasSelection && c.Position.Line != c.Anchor.Line);
+
+        if (!hasMultiLineSelection)
+        {
+            Execute(documentId, (m, caret, start, end) => new PlannedOperation(start, end, indentation));
+            return;
+        }
+
+        var indented = lines.Where(l => model.GetLineLength(l) > 0).Order().ToArray();
+        if (indented.Length == 0) return;
+
+        var edits = indented
+            .Select(l => new TextEdit(new TextRange(new TextPosition(l, 0), new TextPosition(l, 0)), indentation))
+            .ToArray();
+        var indentedSet = indented.ToHashSet();
+        var updated = carets.Carets.Select(c => new Caret(
+            ShiftColumn(c.Position, indentedSet, indentation.Length),
+            ShiftColumn(c.Anchor, indentedSet, indentation.Length))).ToList();
+
+        _editor.ApplyEdits(documentId, edits);
+        _editor.SetCaretSet(documentId, new CaretSet(updated, carets.PrimaryIndex));
     }
 
     /// <summary>
-    /// Retire une tabulation ou jusqu'à quatre espaces au début de chaque ligne
-    /// concernée. Plusieurs curseurs sur une même ligne ne produisent qu'une édition.
+    /// Retire une tabulation ou jusqu'à quatre espaces au début de chaque ligne concernée
+    /// (toutes les lignes d'une sélection). Plusieurs curseurs sur une même ligne ne produisent qu'une édition.
     /// </summary>
     public void Outdent(DocumentId documentId)
     {
-        string text = _editor.GetText(documentId);
-        var model = new TextModel(text);
+        var model = LineSelection.GetModel(_editor, documentId);
         var carets = _editor.GetCaretSet(documentId);
-        var lineNumbers = carets.Carets
-            .Select(c => c.Position.Line)
-            .Distinct()
-            .OrderBy(x => x)
-            .ToArray();
 
-        var edits = new List<TextEdit>();
-        foreach (int line in lineNumbers)
+        // Tout est calculé avant la modification : le modèle est vivant et change après ApplyEdits.
+        var removed = new Dictionary<int, int>();
+        foreach (int line in LineSelection.GetLines(model, carets).Order())
         {
             string lineText = model.GetLineText(line);
-            int remove = lineText.StartsWith('\t') ? 1 :
-                Math.Min(IndentWidth, CountLeadingSpaces(lineText));
-            if (remove == 0) continue;
-
-            var start = new TextPosition(line, 0);
-            var end = new TextPosition(line, remove);
-            edits.Add(new TextEdit(new TextRange(start, end), string.Empty));
+            int remove = lineText.StartsWith('\t') ? 1 : Math.Min(IndentWidth, CountLeadingSpaces(lineText));
+            if (remove > 0) removed[line] = remove;
         }
+        if (removed.Count == 0) return;
 
-        if (edits.Count == 0) return;
+        var edits = removed
+            .Select(kv => new TextEdit(
+                new TextRange(new TextPosition(kv.Key, 0), new TextPosition(kv.Key, kv.Value)), string.Empty))
+            .ToArray();
+        var updated = carets.Carets.Select(c => new Caret(
+            ShiftColumn(c.Position, removed), ShiftColumn(c.Anchor, removed))).ToList();
+
         _editor.ApplyEdits(documentId, edits);
-
-        var updated = new List<Caret>(carets.Count);
-        foreach (var caret in carets.Carets)
-        {
-            int removedBefore = lineNumbers
-                .Where(line => line < caret.Position.Line)
-                .Sum(line =>
-                {
-                    string lineText = model.GetLineText(line);
-                    return lineText.StartsWith('\t') ? 1 :
-                        Math.Min(IndentWidth, CountLeadingSpaces(lineText));
-                });
-
-            int removedOnLine = lineNumbers.Contains(caret.Position.Line)
-                ? (model.GetLineText(caret.Position.Line).StartsWith('\t') ? 1 :
-                    Math.Min(IndentWidth, CountLeadingSpaces(model.GetLineText(caret.Position.Line))))
-                : 0;
-
-            var position = new TextPosition(
-                caret.Position.Line,
-                Math.Max(0, caret.Position.Column - removedOnLine));
-            // Les suppressions d'indentation ne changent pas le nombre de lignes.
-            updated.Add(new Caret(position, new TextPosition(
-                caret.Anchor.Line,
-                Math.Max(0, caret.Anchor.Column -
-                    (caret.Anchor.Line == caret.Position.Line ? removedOnLine : 0)))));
-        }
-
         _editor.SetCaretSet(documentId, new CaretSet(updated, carets.PrimaryIndex));
     }
+
+    // Les extrémités en colonne 0 restent en colonne 0 : la ligne indentée reste entièrement sélectionnée.
+    private static TextPosition ShiftColumn(TextPosition p, HashSet<int> indentedLines, int width) =>
+        p.Column > 0 && indentedLines.Contains(p.Line) ? new TextPosition(p.Line, p.Column + width) : p;
+
+    private static TextPosition ShiftColumn(TextPosition p, Dictionary<int, int> removed) =>
+        removed.TryGetValue(p.Line, out int n) ? new TextPosition(p.Line, Math.Max(0, p.Column - n)) : p;
 
     private void Execute(
         DocumentId documentId,
         Func<TextModel, Caret, int, int, PlannedOperation?> createOperation)
     {
-        string originalText = _editor.GetText(documentId);
-        var model = new TextModel(originalText);
+        var model = LineSelection.GetModel(_editor, documentId);
         var caretSet = _editor.GetCaretSet(documentId);
 
         var plans = new List<CaretPlan>(caretSet.Count);
@@ -181,6 +182,8 @@ public sealed class EditorCommandService
             _editor.ApplyEdits(documentId, edits);
         }
 
+        // Après la modification : le modèle vivant est à jour (sinon on en reconstruit un, une seule fois).
+        var after = LineSelection.GetModel(_editor, documentId);
         var resultingCarets = new List<Caret>(plans.Count);
         foreach (var plan in plans)
         {
@@ -189,7 +192,7 @@ public sealed class EditorCommandService
                 .Sum(o => o.NewText.Length - (o.End - o.Start));
 
             int finalOffset = plan.OriginalStart + shift + plan.InsertedLength;
-            var position = new TextModel(_editor.GetText(documentId)).GetPosition(finalOffset);
+            var position = after.GetPosition(finalOffset);
             resultingCarets.Add(Caret.At(position));
         }
 
