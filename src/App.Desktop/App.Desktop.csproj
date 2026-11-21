@@ -27,5 +27,9 @@
   <ItemGroup>
     <ProjectReference Include="..\App.Application\App.Application.csproj" />
     <ProjectReference Include="..\App.Core\App.Core.csproj" />
+    <ProjectReference Include="..\App.Editor\App.Editor.csproj" />
+    <ProjectReference Include="..\App.Integrations\App.Integrations.csproj" />
+    <ProjectReference Include="..\App.Languages\App.Languages.csproj" />
+    <ProjectReference Include="..\App.Extensions\App.Extensions.csproj" />
   </ItemGroup>
 </Project>
