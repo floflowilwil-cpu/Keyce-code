@@ -8,17 +8,50 @@ namespace App.Integrations.Files;
 /// <summary>
 /// Implémentation de <see cref="IFileService"/> sur le système de fichiers local.
 ///
-/// Encodage : lecture classique (<see cref="File.ReadAllTextAsync(string, CancellationToken)"/> : UTF-8 par défaut,
-/// BOM Unicode reconnu et retiré) et écriture en UTF-8 sans BOM. La détection d'autres encodages
-/// (Latin-1, conservation du BOM…) est volontairement reportée.
+/// Encodage : <see cref="ReadAsync"/> / <see cref="WriteAsync(string, string, CancellationToken)"/> restent en UTF-8
+/// (lecture avec BOM reconnu et retiré, écriture sans BOM). L'éditeur utilise
+/// <see cref="ReadWithEncodingAsync"/> et <see cref="WriteAsync(string, string, FileEncoding, CancellationToken)"/>,
+/// qui détectent et conservent l'encodage (voir <see cref="FileEncodingCodec"/>).
 ///
 /// Erreurs : les erreurs d'E/S sont converties en <see cref="AppException"/> (NotFound, AccessDenied,
 /// AlreadyExists, InvalidArgument). L'annulation lève <see cref="OperationCanceledException"/>.
 /// </summary>
-public sealed class FileService : IFileService
+public sealed class FileService : IEncodedFileService
 {
     /// <summary>Les doublons de « Changed » plus rapprochés que cette durée pour un même chemin sont ignorés.</summary>
     private static readonly TimeSpan ChangedDebounce = TimeSpan.FromMilliseconds(100);
+
+    public async Task<FileContent> ReadWithEncodingAsync(string path, CancellationToken ct = default)
+    {
+        string full = Resolve(path);
+        try
+        {
+            byte[] bytes = await File.ReadAllBytesAsync(full, ct).ConfigureAwait(false);
+            return FileEncodingCodec.Decode(bytes);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw Translate(ex, full);
+        }
+    }
+
+    public async Task WriteAsync(string path, string content, FileEncoding encoding, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        ArgumentNullException.ThrowIfNull(encoding);
+        string full = Resolve(path);
+
+        // Encode avant d'ouvrir le fichier : si le texte n'est pas représentable, le fichier n'est pas touché.
+        byte[] bytes = FileEncodingCodec.Encode(content, encoding);
+        try
+        {
+            await File.WriteAllBytesAsync(full, bytes, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw Translate(ex, full);
+        }
+    }
 
     public async Task<string> ReadAsync(string path, CancellationToken ct = default)
     {

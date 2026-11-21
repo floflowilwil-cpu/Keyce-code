@@ -22,6 +22,29 @@ public interface IEditorService
     void Redo(DocumentId id);
     Task SaveAsync(DocumentId id, CancellationToken ct = default);
 
+    /// <summary>
+    /// Crée un document vide sans fichier (« Sans titre »). SaveAsync échoue tant qu'il n'a pas de chemin :
+    /// utiliser <see cref="SaveAsAsync"/>.
+    /// </summary>
+    DocumentInfo CreateDocument();
+
+    /// <summary>
+    /// « Enregistrer sous » : écrit le contenu dans le fichier, associe le document à ce chemin
+    /// (son langage est recalculé) et le marque enregistré. Lève Conflict si ce fichier est déjà ouvert
+    /// dans un autre document. DocumentStateChanged est levé avec le nouveau chemin.
+    /// </summary>
+    Task SaveAsAsync(DocumentId id, string path, CancellationToken ct = default);
+
+    /// <summary>Encodage utilisé pour enregistrer le document (UTF-8 si le service de fichiers ne le détecte pas).</summary>
+    FileEncoding GetEncoding(DocumentId id);
+
+    /// <summary>
+    /// Change l'encodage d'enregistrement (« Enregistrer avec l'encodage… »). Ne modifie pas le texte et ne marque pas
+    /// le document modifié : l'interface appelle ensuite SaveAsync. Lève InvalidArgument pour un encodage inconnu.
+    /// DocumentStateChanged est levé.
+    /// </summary>
+    void SetEncoding(DocumentId id, FileEncoding encoding);
+
     /// <summary>Ferme le document (arrête aussi la surveillance du fichier). False si déjà fermé.</summary>
     bool CloseDocument(DocumentId id);
 
@@ -44,6 +67,15 @@ public interface IEditorService
 
     /// <summary>Le texte a changé (frappe, Undo/Redo, rechargement). Peut être levé depuis un autre thread.</summary>
     event EventHandler<DocumentChangedEventArgs> DocumentChanged;
+
+    /// <summary>
+    /// Un document vient d'être ouvert ou créé (OpenDocumentAsync sur un fichier pas encore ouvert, CreateDocument).
+    /// Un nouvel abonné lit GetOpenDocuments() pour les documents déjà ouverts.
+    /// </summary>
+    event EventHandler<DocumentInfo> DocumentOpened;
+
+    /// <summary>Un document vient d'être fermé (CloseDocument). L'info est celle du document juste avant sa fermeture.</summary>
+    event EventHandler<DocumentInfo> DocumentClosed;
 
     /// <summary>L'état du document a changé (modifié / enregistré).</summary>
     event EventHandler<DocumentInfo> DocumentStateChanged;

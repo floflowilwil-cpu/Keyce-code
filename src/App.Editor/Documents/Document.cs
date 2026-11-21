@@ -39,9 +39,12 @@ public sealed class Document
 
     public object SyncRoot { get; } = new();
     public DocumentId Id { get; }
-    public string? Path { get; }
-    public string LanguageId { get; }
+    public string? Path { get; private set; }
+    public string LanguageId { get; private set; }
     public LineEnding LineEnding { get; set; }
+
+    /// <summary>Encodage du fichier (détecté à l'ouverture, conservé à l'enregistrement).</summary>
+    public FileEncoding Encoding { get; set; } = FileEncoding.Utf8;
     public TextModel Text { get; }
     public int Version { get; private set; }
     public bool IsDirty => _savedDepth != _undo.Count;
@@ -66,6 +69,14 @@ public sealed class Document
     /// la fin du texte restauré (Undo) ou réinséré (Redo), un curseur par modification pour un lot multi-curseurs.
     /// </summary>
     public IReadOnlyList<int> CaretOffsetsAfterHistoryStep { get; private set; } = Array.Empty<int>();
+
+    /// <summary>Associe le document à un fichier (« Enregistrer sous ») et recalcule son langage.</summary>
+    public void SetPath(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        Path = path;
+        LanguageId = LanguageIds.FromPath(path);
+    }
 
     public DocumentInfo ToInfo() => new(Id, Path, LanguageId, IsDirty);
 
