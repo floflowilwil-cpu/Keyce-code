@@ -18,9 +18,16 @@ public interface ITerminalService
         string input,
         CancellationToken ct = default);
 
+    Task SendInputBytesAsync(
+        TerminalSessionId id,
+        ReadOnlyMemory<byte> input,
+        CancellationToken ct = default);
+
     Task StopSessionAsync(
         TerminalSessionId id,
         CancellationToken ct = default);
 
-    event EventHandler<TerminalOutputEventArgs> OutputReceived;
+    event EventHandler<TerminalOutputEventArgs>? OutputReceived;
+
+    event EventHandler<TerminalOutputBytesEventArgs>? OutputBytesReceived;
 }

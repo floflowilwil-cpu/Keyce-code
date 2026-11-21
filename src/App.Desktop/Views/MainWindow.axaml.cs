@@ -1,3 +1,4 @@
+
 using System;
 using System.ComponentModel;
 using System.IO;
@@ -16,6 +17,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using App.Core.Models;
 using App.Desktop.ViewModels;
+using SvcSystems.UI.Terminal;
 
 namespace App.Desktop.Views;
 
@@ -25,18 +27,28 @@ public partial class MainWindow : Window
     private double _bottomHeight = 200;
     private MainWindowViewModel? _vm;
 
+    private readonly TerminalControlModel _terminalModel = new();
+    private MainWindowViewModel? _terminalViewModel;
+
     public MainWindow()
     {
         InitializeComponent();
 
-        // Thème sombre au démarrage
+        // Initialisation de l'émulateur de terminal.
+        TerminalView.Model = _terminalModel;
+        _terminalModel.UserInput += OnTerminalUserInput;
+
+        // Thème sombre au démarrage.
         if (Avalonia.Application.Current is { } app)
             app.RequestedThemeVariant = ThemeVariant.Dark;
 
         EditorBox.PropertyChanged += (_, e) =>
         {
-            if (e.Property == TextBox.CaretIndexProperty && DataContext is MainWindowViewModel vm)
+            if (e.Property == TextBox.CaretIndexProperty &&
+                DataContext is MainWindowViewModel vm)
+            {
                 vm.UpdateCaret(EditorBox.Text, EditorBox.CaretIndex);
+            }
         };
 
         // Le TextBox est un miroir : on intercepte la frappe AVANT lui et on la renvoie au moteur.
@@ -179,26 +191,41 @@ public partial class MainWindow : Window
     private async void OnPaste(object? sender, RoutedEventArgs e) => await PasteAsync();
 
     // ---------- Thème clair / sombre ----------
+
     private void OnToggleTheme(object? sender, RoutedEventArgs e)
     {
-        if (Avalonia.Application.Current is not { } app) return;
+        if (Avalonia.Application.Current is not { } app)
+            return;
+
         bool goLight = ActualThemeVariant == ThemeVariant.Dark;
-        app.RequestedThemeVariant = goLight ? ThemeVariant.Light : ThemeVariant.Dark;
+
+        app.RequestedThemeVariant = goLight
+            ? ThemeVariant.Light
+            : ThemeVariant.Dark;
+
         if (DataContext is MainWindowViewModel vm)
         {
-            vm.StatusMessage = goLight ? "Thème clair activé" : "Thème sombre activé";
+            vm.StatusMessage = goLight
+                ? "Thème clair activé"
+                : "Thème sombre activé";
+
             vm.Log(vm.StatusMessage);
         }
     }
 
     // ---------- Affichage / masquage des panneaux ----------
-    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+
+    private void OnViewModelPropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs e)
     {
-        if (sender is not MainWindowViewModel vm) return;
+        if (sender is not MainWindowViewModel vm)
+            return;
 
         if (e.PropertyName == nameof(MainWindowViewModel.IsSidebarVisible))
         {
             var cols = RootGrid.ColumnDefinitions;
+
             if (vm.IsSidebarVisible)
             {
                 cols[1].MinWidth = 160;
@@ -207,7 +234,9 @@ public partial class MainWindow : Window
             }
             else
             {
-                if (cols[1].ActualWidth > 0) _sidebarWidth = cols[1].ActualWidth;
+                if (cols[1].ActualWidth > 0)
+                    _sidebarWidth = cols[1].ActualWidth;
+
                 cols[1].MinWidth = 0;
                 cols[1].Width = new GridLength(0);
                 cols[2].Width = new GridLength(0);
@@ -216,6 +245,7 @@ public partial class MainWindow : Window
         else if (e.PropertyName == nameof(MainWindowViewModel.IsBottomVisible))
         {
             var rows = CenterGrid.RowDefinitions;
+
             if (vm.IsBottomVisible)
             {
                 rows[2].Height = new GridLength(4);
@@ -224,7 +254,9 @@ public partial class MainWindow : Window
             }
             else
             {
-                if (rows[3].ActualHeight > 0) _bottomHeight = rows[3].ActualHeight;
+                if (rows[3].ActualHeight > 0)
+                    _bottomHeight = rows[3].ActualHeight;
+
                 rows[2].Height = new GridLength(0);
                 rows[3].MinHeight = 0;
                 rows[3].Height = new GridLength(0);
@@ -258,7 +290,15 @@ public partial class MainWindow : Window
     // ---------- Dossier / fichiers ----------
     private async void OnOpenFolder(object? sender, RoutedEventArgs e)
     {
-        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        var folders = await StorageProvider.OpenFolderPickerAsync(
+            new FolderPickerOpenOptions
+            {
+                Title = "Ouvrir un dossier",
+                AllowMultiple = false
+            });
+
+        if (folders.Count > 0 &&
+            DataContext is MainWindowViewModel vm)
         {
             Title = "Ouvrir un dossier",
             AllowMultiple = false
@@ -284,7 +324,8 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnExit(object? sender, RoutedEventArgs e) => Close();
+    private void OnExit(object? sender, RoutedEventArgs e)
+        => Close();
 
     // ---------- Enregistrer / fermer ----------
     private async void OnSave(object? sender, RoutedEventArgs e) => await SaveAsync();
@@ -362,7 +403,9 @@ public partial class MainWindow : Window
 
     private void OnFind(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not MainWindowViewModel vm || !vm.HasFile) return;
+        if (DataContext is not MainWindowViewModel vm || !vm.HasFile)
+            return;
+
         vm.IsFindVisible = true;
         Dispatcher.UIThread.Post(() => { FindBox.Focus(); FindBox.SelectAll(); });
         vm.UpdateFindCount();
@@ -373,7 +416,8 @@ public partial class MainWindow : Window
 
     private void OnFindClose(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is MainWindowViewModel vm) vm.IsFindVisible = false;
+        if (DataContext is MainWindowViewModel vm)
+            vm.IsFindVisible = false;
     }
 
     private void OnFindKeyDown(object? sender, KeyEventArgs e)
@@ -486,11 +530,15 @@ public partial class MainWindow : Window
     }
 
     // ---------- Atteindre ----------
+
     private void OnGoToFile(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not MainWindowViewModel vm) return;
+        if (DataContext is not MainWindowViewModel vm)
+            return;
+
         if (!(vm.ActivePanel == 1 && vm.IsSidebarVisible))
             vm.ShowPanelCommand.Execute("1");
+
         Dispatcher.UIThread.Post(() => SearchBox.Focus());
     }
 
@@ -504,8 +552,10 @@ public partial class MainWindow : Window
     }
 
     // ---------- Aide ----------
+
     private void OnDocumentation(object? sender, RoutedEventArgs e) =>
-        ShowInfo("Documentation",
+        ShowInfo(
+            "Documentation",
             "Keyce Code : guide rapide\n\n" +
             "• Fichier > Ouvrir un dossier : affiche votre projet dans l'explorateur.\n" +
             "• Cliquez sur un fichier pour l'ouvrir dans un onglet ; Ctrl+S enregistre.\n" +
@@ -533,25 +583,48 @@ public partial class MainWindow : Window
             "Échap : fermer la recherche");
 
     private void OnAbout(object? sender, RoutedEventArgs e) =>
-        ShowInfo("À propos de Keyce Code",
+        ShowInfo(
+            "À propos de Keyce Code",
             "Keyce Code\nVersion 0.1 (projet universitaire)\n\n" +
             "Éditeur de code de bureau développé en C# / .NET avec Avalonia UI.\n" +
-            "Module interface graphique : développeur 1.", true);
+            "Module interface graphique : développeur 1.",
+            true);
 
-    private async void ShowInfo(string title, string body, bool showLogo = false)
+    private async void ShowInfo(
+        string title,
+        string body,
+        bool showLogo = false)
     {
-        var panel = new StackPanel { Margin = new Thickness(20), Spacing = 12 };
+        var panel = new StackPanel
+        {
+            Margin = new Thickness(20),
+            Spacing = 12
+        };
+
         if (showLogo)
         {
             panel.Children.Add(new Image
             {
-                Source = new Bitmap(AssetLoader.Open(new Uri("avares://App.Desktop/Assets/logo.png"))),
+                Source = new Bitmap(
+                    AssetLoader.Open(
+                        new Uri("avares://App.Desktop/Assets/logo.png"))),
                 Width = 96,
                 Height = 96
             });
         }
-        panel.Children.Add(new TextBlock { Text = body, TextWrapping = TextWrapping.Wrap });
-        var close = new Button { Content = "Fermer", HorizontalAlignment = HorizontalAlignment.Right };
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = body,
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        var close = new Button
+        {
+            Content = "Fermer",
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+
         panel.Children.Add(close);
 
         var dlg = new Window
@@ -563,7 +636,9 @@ public partial class MainWindow : Window
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Content = panel
         };
+
         close.Click += (_, _) => dlg.Close();
+
         await dlg.ShowDialog(this);
     }
 
@@ -600,7 +675,13 @@ public partial class MainWindow : Window
     private async Task<string?> Prompt(string title, string label)
     {
         var box = new TextBox { MinWidth = 200 };
-        var ok = new Button { Content = "OK", HorizontalAlignment = HorizontalAlignment.Right };
+
+        var ok = new Button
+        {
+            Content = "OK",
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+
         var dlg = new Window
         {
             Title = title,
@@ -612,17 +693,36 @@ public partial class MainWindow : Window
             {
                 Margin = new Thickness(16),
                 Spacing = 10,
-                Children = { new TextBlock { Text = label }, box, ok }
+                Children =
+                {
+                    new TextBlock { Text = label },
+                    box,
+                    ok
+                }
             }
         };
+
         string? result = null;
-        ok.Click += (_, _) => { result = box.Text; dlg.Close(); };
+
+        ok.Click += (_, _) =>
+        {
+            result = box.Text;
+            dlg.Close();
+        };
+
         box.KeyDown += (_, e) =>
         {
-            if (e.Key == Key.Enter) { result = box.Text; dlg.Close(); }
+            if (e.Key == Key.Enter)
+            {
+                result = box.Text;
+                dlg.Close();
+            }
         };
+
         dlg.Opened += (_, _) => box.Focus();
+
         await dlg.ShowDialog(this);
+
         return result;
     }
 }

@@ -1,8 +1,10 @@
+
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using App.Application.Composition;
 using App.Desktop.ViewModels;
 using App.Desktop.Views;
+using App.Integrations.Terminal;
 
 namespace App.Desktop;
 

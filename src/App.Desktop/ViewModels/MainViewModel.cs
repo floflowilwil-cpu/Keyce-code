@@ -1,3 +1,5 @@
+
+using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -132,6 +134,7 @@ public partial class MainWindowViewModel : ObservableObject
         var parts = (info ?? "").Split('|');
         var owner = parts.Length > 1 ? parts[0] : "module concerné";
         var name = parts.Length > 1 ? parts[1] : info;
+
         StatusMessage = $"« {name} » sera disponible avec le module du {owner}.";
         Log(StatusMessage);
     }
@@ -551,8 +554,15 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void ShowBottom(string? index)
     {
-        if (!int.TryParse(index, out var n)) return;
-        if (BottomTab == n && IsBottomVisible) { IsBottomVisible = false; return; }
+        if (!int.TryParse(index, out var n))
+            return;
+
+        if (BottomTab == n && IsBottomVisible)
+        {
+            IsBottomVisible = false;
+            return;
+        }
+
         BottomTab = n;
         IsBottomVisible = true;
         if (n == 2) _ = EnsureTerminalAsync();
@@ -701,12 +711,15 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void ShowPanel(string? index)
     {
-        if (!int.TryParse(index, out var n)) return;
+        if (!int.TryParse(index, out var n))
+            return;
+
         if (ActivePanel == n && IsSidebarVisible)
         {
             IsSidebarVisible = false;
             return;
         }
+
         ActivePanel = n;
         IsSidebarVisible = true;
         if (n == 2) _ = Git.RefreshCommand.ExecuteAsync(null);
@@ -718,6 +731,7 @@ public partial class MainWindowViewModel : ObservableObject
     // ---------- Recherche par nom de fichier ----------
     [ObservableProperty] private string _searchQuery = "";
     [ObservableProperty] private string _searchInfo = "Ouvrez un dossier pour rechercher.";
+
     public ObservableCollection<FileNode> SearchResults { get; } = new();
 
     partial void OnSearchQueryChanged(string value) => RunSearch();
@@ -725,10 +739,23 @@ public partial class MainWindowViewModel : ObservableObject
     private void RunSearch()
     {
         SearchResults.Clear();
+
         var q = SearchQuery.Trim();
-        if (!HasFolder) { SearchInfo = "Ouvrez un dossier pour rechercher."; return; }
-        if (q.Length == 0) { SearchInfo = "Tapez un nom de fichier."; return; }
+
+        if (!HasFolder)
+        {
+            SearchInfo = "Ouvrez un dossier pour rechercher.";
+            return;
+        }
+
+        if (q.Length == 0)
+        {
+            SearchInfo = "Tapez un nom de fichier.";
+            return;
+        }
+
         Collect(Nodes, q);
+
         SearchInfo = SearchResults.Count == 0
             ? "Aucun fichier trouvé."
             : $"{SearchResults.Count} fichier(s) trouvé(s)";
@@ -738,9 +765,12 @@ public partial class MainWindowViewModel : ObservableObject
     {
         foreach (var n in nodes)
         {
-            if (SearchResults.Count >= 200) return;
+            if (SearchResults.Count >= 200)
+                return;
+
             if (!n.IsDirectory && n.Name.Contains(q, StringComparison.OrdinalIgnoreCase))
                 SearchResults.Add(n);
+
             Collect(n.Children, q);
         }
     }
