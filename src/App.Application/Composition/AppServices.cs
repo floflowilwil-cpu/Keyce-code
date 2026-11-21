@@ -1,9 +1,11 @@
+
 using App.Application.Sync;
 using App.Application.Workspaces;
 using App.Core.Contracts;
 using App.Extensions;
 using App.Extensions.Commands;
 using App.Languages;
+using App.Integrations.Execution;
 
 namespace App.Application.Composition;
 
@@ -24,6 +26,7 @@ public sealed class AppServices : IDisposable
         IEditorCommands editorCommands,
         IGitService git,
         ITerminalService terminal,
+        IExecutionService execution,
         IDebugService debugger,
         LanguageClient languages,
         LanguageSyncService languageSync,
@@ -37,6 +40,7 @@ public sealed class AppServices : IDisposable
         EditorCommands = editorCommands;
         Git = git;
         Terminal = terminal;
+        Execution = execution;
         Debugger = debugger;
         _languageClient = languages;
         Languages = languages;
@@ -51,6 +55,7 @@ public sealed class AppServices : IDisposable
     public IEditorCommands EditorCommands { get; }
     public IGitService Git { get; }
     public ITerminalService Terminal { get; }
+    public IExecutionService Execution { get; }
     public IDebugService Debugger { get; }
     public ILanguageClient Languages { get; }
     public ICommandService CommandRegistry { get; }
@@ -71,6 +76,7 @@ public sealed class AppServices : IDisposable
         var editorCommands = new App.Editor.Editing.EditorCommands(editor);
         var git = new App.Integrations.Git.GitService(workspace);
         var terminal = new App.Integrations.Terminal.TerminalService();
+        var execution = new ExecutionService();
         var debugger = new App.Integrations.Debug.DebugService();
         var languages = new LanguageClient();
         var languageSync = new LanguageSyncService(editor, languages, workspace);
@@ -82,7 +88,7 @@ public sealed class AppServices : IDisposable
         var extensions = new ExtensionManager(extensionsRoot, commandRegistry, git, workspace);
 
         return new AppServices(
-            workspace, files, editor, editorCommands, git, terminal, debugger,
+            workspace, files, editor, editorCommands, git, terminal, execution, debugger,
             languages, languageSync, commandRegistry, extensions);
     }
 
