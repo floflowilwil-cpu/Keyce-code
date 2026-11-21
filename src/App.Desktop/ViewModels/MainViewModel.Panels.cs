@@ -22,6 +22,7 @@ public partial class MainWindowViewModel
             if (e.PropertyName == "ErrorMessage") UI(UpdateGitState);
         };
         _s.Extensions.ExtensionChanged += (_, _) => UI(RefreshExtensions);
+        _s.CommandRegistry.CommandsChanged += (_, _) => UI(RefreshExtensionCommands);
     }
 
     /// <summary>À appeler une fois au démarrage (charge les extensions installées).</summary>
@@ -30,6 +31,7 @@ public partial class MainWindowViewModel
         try { await _s.Extensions.LoadInstalledAsync(); }
         catch (Exception ex) { Log("Extensions : " + ex.Message); }
         RefreshExtensions();
+        RefreshExtensionCommands();
     }
 
     // =====================================================================
@@ -206,6 +208,7 @@ public partial class MainWindowViewModel
     // =====================================================================
 
     public ObservableCollection<ExtensionItem> ExtensionItems { get; } = new();
+    public ObservableCollection<CommandInfo> ExtensionCommands { get; } = new();
 
     [ObservableProperty] private string _extensionsInfo = "Aucune extension installée.";
 
@@ -220,6 +223,13 @@ public partial class MainWindowViewModel
             : $"{ExtensionItems.Count} extension(s)";
     }
 
+    private void RefreshExtensionCommands()
+    {
+        ExtensionCommands.Clear();
+        foreach (CommandInfo cmd in _s.CommandRegistry.Commands)
+            ExtensionCommands.Add(cmd);
+    }
+
     public async Task InstallExtensionAsync(string folder)
     {
         try
@@ -227,6 +237,51 @@ public partial class MainWindowViewModel
             var info = await _s.Extensions.InstallAsync(folder);
             StatusMessage = $"Extension installée : {info.Manifest.Name}";
             Log(StatusMessage);
+        }
+        catch (AppException ex) { ReportError(ex); }
+    }
+
+    public async Task UpdateExtensionAsync(string folder)
+    {
+        try
+        {
+            var info = await _s.Extensions.UpdateAsync(folder);
+            StatusMessage = $"Extension mise à jour : {info.Manifest.Name} v{info.Manifest.Version}";
+            Log(StatusMessage);
+        }
+        catch (AppException ex) { ReportError(ex); }
+    }
+
+    [RelayCommand]
+    private async Task ExecuteExtensionCommand(string? commandId)
+    {
+        if (string.IsNullOrWhiteSpace(commandId)) return;
+        try
+        {
+            await _s.CommandRegistry.ExecuteAsync(commandId);
+            StatusMessage = $"Commande exécutée : {commandId}";
+            Log(StatusMessage);
+        }
+        catch (AppException ex) { ReportError(ex); }
+    }
+
+    [RelayCommand]
+    private async Task ExplainActiveCodeWithAi()
+    {
+        if (ActiveTab is null || string.IsNullOrWhiteSpace(FileContent))
+        {
+            StatusMessage = "Ouvrez un fichier non vide pour l'expliquer avec l'IA.";
+            return;
+        }
+
+        try
+        {
+            StatusMessage = "Analyse IA en cours…";
+            string? languageId = _s.Editor.GetInfo(ActiveTab.Id).LanguageId;
+            string explanation = await _s.AiAssistant.ExplainCodeAsync(FileContent, languageId);
+            Log($"Explication IA ({ActiveTab.Title}) :\n{explanation}");
+            ShowOutput();
+            StatusMessage = "Explication IA affichée dans Sortie.";
         }
         catch (AppException ex) { ReportError(ex); }
     }

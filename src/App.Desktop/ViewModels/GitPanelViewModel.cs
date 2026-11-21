@@ -22,6 +22,10 @@ public sealed class GitPanelViewModel : ViewModelBase
         CommitCommand = new AsyncRelayCommand(ct => Controller.CommitAsync(ct));
         CheckoutBranchCommand = new AsyncRelayCommand<string>(
             (branch, ct) => Controller.CheckoutBranchAsync(branch ?? string.Empty, ct));
+        CreateBranchCommand = new AsyncRelayCommand(ct => Controller.CreateNewBranchAsync(ct));
+        MergeBranchCommand = new AsyncRelayCommand<string>(
+            (branch, ct) => Controller.MergeBranchAsync(branch ?? string.Empty, ct));
+        AbortMergeCommand = new AsyncRelayCommand(ct => Controller.AbortMergeAsync(ct));
         LoadDiffCommand = new AsyncRelayCommand<string>(
             (path, ct) => Controller.LoadDiffAsync(path, ct));
         PushCommand = new AsyncRelayCommand(ct => Controller.PushAsync(ct));
@@ -36,6 +40,9 @@ public sealed class GitPanelViewModel : ViewModelBase
     public IAsyncRelayCommand StageAllCommand { get; }
     public IAsyncRelayCommand CommitCommand { get; }
     public IAsyncRelayCommand<string> CheckoutBranchCommand { get; }
+    public IAsyncRelayCommand CreateBranchCommand { get; }
+    public IAsyncRelayCommand<string> MergeBranchCommand { get; }
+    public IAsyncRelayCommand AbortMergeCommand { get; }
     public IAsyncRelayCommand<string> LoadDiffCommand { get; }
     public IAsyncRelayCommand PushCommand { get; }
     public IAsyncRelayCommand PullCommand { get; }
