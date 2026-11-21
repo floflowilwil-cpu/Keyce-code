@@ -21,6 +21,8 @@ public sealed class TerminalService : ITerminalService
 
     public event EventHandler<TerminalOutputEventArgs>? OutputReceived;
 
+    public event EventHandler<TerminalOutputBytesEventArgs>? OutputBytesReceived;
+
     public async Task<TerminalSessionId> StartSessionAsync(
         TerminalStartOptions options,
         CancellationToken ct = default)
@@ -71,12 +73,23 @@ public sealed class TerminalService : ITerminalService
         }
     }
 
-    public async Task SendInputAsync(
+    public Task SendInputAsync(
         TerminalSessionId id,
         string input,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(input);
+
+        byte[] inputBytes = Encoding.UTF8.GetBytes(input);
+
+        return SendInputBytesAsync(id, inputBytes, ct);
+    }
+
+    public async Task SendInputBytesAsync(
+        TerminalSessionId id,
+        ReadOnlyMemory<byte> input,
+        CancellationToken ct = default)
+    {
         ct.ThrowIfCancellationRequested();
 
         if (!_sessions.TryGetValue(id, out var session))
@@ -87,8 +100,6 @@ public sealed class TerminalService : ITerminalService
 
         try
         {
-            // Vérification après acquisition du verrou :
-            // la session a pu être supprimée pendant l'attente.
             if (!_sessions.TryGetValue(id, out var currentSession)
                 || !ReferenceEquals(currentSession, session))
             {
@@ -100,10 +111,7 @@ public sealed class TerminalService : ITerminalService
                 throw new InvalidOperationException(
                     "La session de terminal est déjà arrêtée.");
 
-            await session.Pty.WriteInputAsync(
-                input,
-                Encoding.UTF8,
-                ct);
+            await session.Pty.WriteInputAsync(input, ct);
         }
         finally
         {
@@ -181,13 +189,17 @@ public sealed class TerminalService : ITerminalService
 
         await foreach (var chunk in session.Pty.ReadOutputAsync())
         {
+            byte[] outputBytes = chunk.Data.ToArray();
+
+            RaiseOutputBytesReceived(sessionId, outputBytes);
+
             int maxChars = Encoding.UTF8.GetMaxCharCount(
-                chunk.Data.Length);
+                outputBytes.Length);
 
             char[] charBuffer = new char[maxChars];
 
             int charCount = decoder.GetChars(
-                chunk.Data.Span,
+                outputBytes,
                 charBuffer,
                 flush: false);
 
@@ -226,6 +238,33 @@ public sealed class TerminalService : ITerminalService
         foreach (var callback in handlers.GetInvocationList())
         {
             if (callback is not EventHandler<TerminalOutputEventArgs> handler)
+                continue;
+
+            try
+            {
+                handler(this, args);
+            }
+            catch
+            {
+                // Un abonné défaillant ne doit pas interrompre les autres.
+            }
+        }
+    }
+
+    private void RaiseOutputBytesReceived(
+        TerminalSessionId sessionId,
+        byte[] data)
+    {
+        var handlers = OutputBytesReceived;
+
+        if (handlers is null)
+            return;
+
+        var args = new TerminalOutputBytesEventArgs(sessionId, data);
+
+        foreach (var callback in handlers.GetInvocationList())
+        {
+            if (callback is not EventHandler<TerminalOutputBytesEventArgs> handler)
                 continue;
 
             try

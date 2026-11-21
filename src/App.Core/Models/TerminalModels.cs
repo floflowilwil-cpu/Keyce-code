@@ -1,3 +1,4 @@
+
 namespace App.Core.Models;
 
 public readonly record struct TerminalSessionId(Guid Value)
@@ -11,8 +12,18 @@ public sealed record TerminalStartOptions(
     string? WorkingDirectory = null,
     IReadOnlyDictionary<string, string>? Environment = null);
 
-public sealed class TerminalOutputEventArgs(TerminalSessionId sessionId, string data) : EventArgs
+public sealed class TerminalOutputEventArgs(
+    TerminalSessionId sessionId,
+    string data) : EventArgs
 {
     public TerminalSessionId SessionId { get; } = sessionId;
     public string Data { get; } = data;
+}
+
+public sealed class TerminalOutputBytesEventArgs(
+    TerminalSessionId sessionId,
+    byte[] data) : EventArgs
+{
+    public TerminalSessionId SessionId { get; } = sessionId;
+    public byte[] Data { get; } = data;
 }

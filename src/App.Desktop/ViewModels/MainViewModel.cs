@@ -1,8 +1,14 @@
+
+using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Text;
+using Avalonia.Threading;
+using App.Core.Contracts;
+using App.Core.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -30,6 +36,22 @@ public partial class MainWindowViewModel : ObservableObject
     private static readonly HashSet<string> Ignored =
         new(StringComparer.OrdinalIgnoreCase) { "bin", "obj", ".git", ".vs", "node_modules" };
 
+    public ITerminalService TerminalService { get; }
+
+    private TerminalSessionId? _terminalSessionId;
+
+    public TerminalSessionId? ActiveTerminalSessionId => _terminalSessionId;
+
+    private readonly StringBuilder _terminalOutput = new();
+
+    public MainWindowViewModel(ITerminalService terminalService)
+    {
+        TerminalService = terminalService
+            ?? throw new ArgumentNullException(nameof(terminalService));
+
+        TerminalService.OutputReceived += OnTerminalOutputReceived;
+    }
+
     // ---------- Dossier / fichier ----------
     [ObservableProperty] private string _folderName = "";
     [ObservableProperty] private bool _hasFolder;
@@ -52,6 +74,163 @@ public partial class MainWindowViewModel : ObservableObject
     public void Log(string message) =>
         OutputText += $"[{DateTime.Now:HH:mm:ss}] {message}\n";
 
+    // ---------- Terminal ----------
+    [ObservableProperty] private string _terminalInput = "";
+    [ObservableProperty] private string _terminalText = "";
+    [ObservableProperty] private bool _isTerminalRunning;
+    [ObservableProperty] private string _terminalStatus = "Aucun terminal actif.";
+
+    [RelayCommand]
+    private async Task StartTerminal()
+    {
+        if (_terminalSessionId.HasValue)
+        {
+            TerminalStatus = "Un terminal est déjà actif.";
+            return;
+        }
+
+        try
+        {
+            _terminalOutput.Clear();
+            TerminalText = "";
+
+            string? workingDirectory = HasFolder
+                ? GetFolderPath()
+                : Environment.CurrentDirectory;
+
+            var options = new TerminalStartOptions(
+                WorkingDirectory: workingDirectory);
+
+            var sessionId = await TerminalService.StartSessionAsync(options);
+
+            _terminalSessionId = sessionId;
+            OnPropertyChanged(nameof(ActiveTerminalSessionId));
+
+            IsTerminalRunning = true;
+            TerminalStatus = $"Terminal actif — {workingDirectory}";
+            TerminalText = $"Terminal démarré dans : {workingDirectory}\n";
+        }
+        catch (Exception ex)
+        {
+            TerminalStatus = "Impossible de démarrer le terminal.";
+            AppendTerminalOutput($"Erreur : {ex.Message}\n");
+        }
+    }
+
+    [RelayCommand]
+    private async Task SendTerminalInput()
+    {
+        if (!_terminalSessionId.HasValue || !IsTerminalRunning)
+            return;
+
+        if (string.IsNullOrEmpty(TerminalInput))
+            return;
+
+        string input = TerminalInput;
+        TerminalInput = "";
+
+        try
+        {
+            await TerminalService.SendInputAsync(
+                _terminalSessionId.Value,
+                input + Environment.NewLine);
+        }
+        catch (Exception ex)
+        {
+            TerminalStatus = "Erreur lors de l'envoi de la commande.";
+            AppendTerminalOutput($"Erreur : {ex.Message}\n");
+        }
+    }
+
+    public async Task SendTerminalInputBytesAsync(ReadOnlyMemory<byte> input)
+    {
+        if (!_terminalSessionId.HasValue || !IsTerminalRunning || input.IsEmpty)
+            return;
+
+        try
+        {
+            await TerminalService.SendInputBytesAsync(
+                _terminalSessionId.Value,
+                input);
+        }
+        catch (Exception ex)
+        {
+            TerminalStatus = "Erreur lors de l'envoi des données au terminal.";
+            AppendTerminalOutput($"Erreur : {ex.Message}\n");
+        }
+    }
+
+    [RelayCommand]
+    private async Task StopTerminal()
+    {
+        if (!_terminalSessionId.HasValue)
+            return;
+
+        var sessionId = _terminalSessionId.Value;
+
+        _terminalSessionId = null;
+        OnPropertyChanged(nameof(ActiveTerminalSessionId));
+
+        IsTerminalRunning = false;
+
+        try
+        {
+            await TerminalService.StopSessionAsync(sessionId);
+            TerminalStatus = "Terminal arrêté.";
+        }
+        catch (Exception ex)
+        {
+            TerminalStatus = "Erreur lors de l'arrêt du terminal.";
+            AppendTerminalOutput($"Erreur : {ex.Message}\n");
+        }
+    }
+
+    private void OnTerminalOutputReceived(
+        object? sender,
+        TerminalOutputEventArgs e)
+    {
+        if (!_terminalSessionId.HasValue ||
+            e.SessionId != _terminalSessionId.Value)
+            return;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_terminalSessionId.HasValue &&
+                e.SessionId == _terminalSessionId.Value)
+            {
+                AppendTerminalOutput(e.Data);
+            }
+        });
+    }
+
+    private void AppendTerminalOutput(string text)
+    {
+        _terminalOutput.Append(text);
+
+        const int maxOutputLength = 100_000;
+
+        if (_terminalOutput.Length > maxOutputLength)
+        {
+            _terminalOutput.Remove(
+                0,
+                _terminalOutput.Length - maxOutputLength);
+        }
+
+        TerminalText = _terminalOutput.ToString();
+    }
+
+    private string GetFolderPath()
+    {
+        if (Nodes.Count == 0)
+            return Environment.CurrentDirectory;
+
+        var firstNode = Nodes[0];
+
+        return firstNode.IsDirectory
+            ? Path.GetDirectoryName(firstNode.FullPath) ?? Environment.CurrentDirectory
+            : firstNode.Directory;
+    }
+
     // ---------- Commandes en attente des autres modules ----------
     [RelayCommand]
     private void NotAvailable(string? info)
@@ -59,6 +238,7 @@ public partial class MainWindowViewModel : ObservableObject
         var parts = (info ?? "").Split('|');
         var owner = parts.Length > 1 ? parts[0] : "module concerné";
         var name = parts.Length > 1 ? parts[1] : info;
+
         StatusMessage = $"« {name} » sera disponible avec le module du {owner}.";
         Log(StatusMessage);
     }
@@ -83,8 +263,15 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void ShowBottom(string? index)
     {
-        if (!int.TryParse(index, out var n)) return;
-        if (BottomTab == n && IsBottomVisible) { IsBottomVisible = false; return; }
+        if (!int.TryParse(index, out var n))
+            return;
+
+        if (BottomTab == n && IsBottomVisible)
+        {
+            IsBottomVisible = false;
+            return;
+        }
+
         BottomTab = n;
         IsBottomVisible = true;
     }
@@ -92,11 +279,15 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void SetBottomTab(string? index)
     {
-        if (int.TryParse(index, out var n)) BottomTab = n;
+        if (int.TryParse(index, out var n))
+            BottomTab = n;
     }
 
-    [RelayCommand] private void ToggleBottom() => IsBottomVisible = !IsBottomVisible;
-    [RelayCommand] private void CloseBottom() => IsBottomVisible = false;
+    [RelayCommand]
+    private void ToggleBottom() => IsBottomVisible = !IsBottomVisible;
+
+    [RelayCommand]
+    private void CloseBottom() => IsBottomVisible = false;
 
     // ---------- Panneaux de la barre latérale ----------
     [ObservableProperty]
@@ -139,12 +330,15 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void ShowPanel(string? index)
     {
-        if (!int.TryParse(index, out var n)) return;
+        if (!int.TryParse(index, out var n))
+            return;
+
         if (ActivePanel == n && IsSidebarVisible)
         {
             IsSidebarVisible = false;
             return;
         }
+
         ActivePanel = n;
         IsSidebarVisible = true;
     }
@@ -155,6 +349,7 @@ public partial class MainWindowViewModel : ObservableObject
     // ---------- Recherche par nom de fichier ----------
     [ObservableProperty] private string _searchQuery = "";
     [ObservableProperty] private string _searchInfo = "Ouvrez un dossier pour rechercher.";
+
     public ObservableCollection<FileNode> SearchResults { get; } = new();
 
     partial void OnSearchQueryChanged(string value) => RunSearch();
@@ -162,10 +357,23 @@ public partial class MainWindowViewModel : ObservableObject
     private void RunSearch()
     {
         SearchResults.Clear();
+
         var q = SearchQuery.Trim();
-        if (!HasFolder) { SearchInfo = "Ouvrez un dossier pour rechercher."; return; }
-        if (q.Length == 0) { SearchInfo = "Tapez un nom de fichier."; return; }
+
+        if (!HasFolder)
+        {
+            SearchInfo = "Ouvrez un dossier pour rechercher.";
+            return;
+        }
+
+        if (q.Length == 0)
+        {
+            SearchInfo = "Tapez un nom de fichier.";
+            return;
+        }
+
         Collect(Nodes, q);
+
         SearchInfo = SearchResults.Count == 0
             ? "Aucun fichier trouvé."
             : $"{SearchResults.Count} fichier(s) trouvé(s)";
@@ -175,9 +383,12 @@ public partial class MainWindowViewModel : ObservableObject
     {
         foreach (var n in nodes)
         {
-            if (SearchResults.Count >= 200) return;
+            if (SearchResults.Count >= 200)
+                return;
+
             if (!n.IsDirectory && n.Name.Contains(q, StringComparison.OrdinalIgnoreCase))
                 SearchResults.Add(n);
+
             Collect(n.Children, q);
         }
     }
@@ -187,27 +398,39 @@ public partial class MainWindowViewModel : ObservableObject
     {
         Nodes.Clear();
         LoadInto(Nodes, path, 0);
+
         var name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar));
+
         FolderName = (string.IsNullOrEmpty(name) ? path : name).ToUpperInvariant();
         HasFolder = true;
         StatusMessage = "Dossier ouvert : " + path;
+
         Log(StatusMessage);
         RunSearch();
     }
 
-    private static void LoadInto(ObservableCollection<FileNode> target, string path, int depth)
+    private static void LoadInto(
+        ObservableCollection<FileNode> target,
+        string path,
+        int depth)
     {
-        if (depth > 5) return;
+        if (depth > 5)
+            return;
+
         try
         {
             foreach (var dir in System.IO.Directory.GetDirectories(path).OrderBy(Path.GetFileName))
             {
                 var name = Path.GetFileName(dir);
-                if (Ignored.Contains(name)) continue;
+
+                if (Ignored.Contains(name))
+                    continue;
+
                 var node = new FileNode(name, dir, true);
                 LoadInto(node.Children, dir, depth + 1);
                 target.Add(node);
             }
+
             foreach (var file in System.IO.Directory.GetFiles(path).OrderBy(Path.GetFileName))
                 target.Add(new FileNode(Path.GetFileName(file), file, false));
         }
@@ -218,7 +441,9 @@ public partial class MainWindowViewModel : ObservableObject
     // ---------- Fichier ----------
     public void OpenFile(FileNode node)
     {
-        if (node.IsDirectory) return;
+        if (node.IsDirectory)
+            return;
+
         try
         {
             if (new FileInfo(node.FullPath).Length > 2_000_000)
@@ -227,19 +452,23 @@ public partial class MainWindowViewModel : ObservableObject
                 Log(StatusMessage);
                 return;
             }
+
             var text = File.ReadAllText(node.FullPath);
+
             if (text.Contains('\0'))
             {
                 StatusMessage = "Fichier binaire : affichage impossible";
                 Log(StatusMessage);
                 return;
             }
+
             FileContent = text;
             OpenFileName = node.Name;
             LineEnding = text.Contains("\r\n") ? "CRLF" : "LF";
             Language = DetectLanguage(node.Name);
             Position = "Ln 1, Col 1";
             StatusMessage = node.FullPath;
+
             Log("Fichier ouvert : " + node.FullPath);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -265,11 +494,19 @@ public partial class MainWindowViewModel : ObservableObject
     {
         text ??= "";
         caretIndex = Math.Clamp(caretIndex, 0, text.Length);
-        int line = 1, lastNewLine = -1;
+
+        int line = 1;
+        int lastNewLine = -1;
+
         for (int i = 0; i < caretIndex; i++)
         {
-            if (text[i] == '\n') { line++; lastNewLine = i; }
+            if (text[i] == '\n')
+            {
+                line++;
+                lastNewLine = i;
+            }
         }
+
         Position = $"Ln {line}, Col {caretIndex - lastNewLine}";
     }
 
