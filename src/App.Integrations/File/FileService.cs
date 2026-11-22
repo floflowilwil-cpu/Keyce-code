@@ -35,6 +35,93 @@ public sealed class FileService : IEncodedFileService
         }
     }
 
+    public async Task<FileContent> ReadAsEncodingAsync(string path, FileEncoding encoding, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(encoding);
+        string full = Resolve(path);
+
+        byte[] bytes;
+        try
+        {
+            bytes = await File.ReadAllBytesAsync(full, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw Translate(ex, full);
+        }
+
+        return FileEncodingCodec.DecodeAs(bytes, encoding);
+    }
+
+    public Task MoveAsync(string path, string newPath, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        string from = Path.TrimEndingDirectorySeparator(Resolve(path));
+        string to = Path.TrimEndingDirectorySeparator(Resolve(newPath));
+
+        try
+        {
+            bool isDirectory = Directory.Exists(from);
+            if (!isDirectory && !File.Exists(from))
+                throw new AppException(ErrorCode.NotFound, $"Introuvable : {from}");
+
+            if (string.Equals(from, to, StringComparison.Ordinal))
+                return Task.CompletedTask; // même nom : rien à faire
+
+            string? parent = Path.GetDirectoryName(to);
+            if (parent is null || !Directory.Exists(parent))
+                throw new AppException(ErrorCode.NotFound, $"Dossier de destination introuvable : {parent}");
+
+            if (isDirectory &&
+                to.StartsWith(from + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                throw new AppException(ErrorCode.InvalidArgument, "Impossible de déplacer un dossier dans lui-même.");
+
+            // Changement de casse seul (« a.txt » → « A.txt ») : sur un disque Windows, la destination « existe »
+            // car c'est la même entrée. On passe alors par un nom temporaire.
+            bool caseOnly = string.Equals(from, to, StringComparison.OrdinalIgnoreCase);
+            string newName = Path.GetFileName(to);
+
+            bool taken = caseOnly
+                ? Directory.EnumerateFileSystemEntries(parent).Any(e =>
+                    Path.GetFileName(e) == newName && !string.Equals(e, from, StringComparison.Ordinal))
+                : File.Exists(to) || Directory.Exists(to);
+
+            if (taken)
+                throw new AppException(ErrorCode.AlreadyExists, $"Existe déjà : {to}");
+
+            if (caseOnly)
+            {
+                string temp = Path.Combine(parent, ".keyce-rename-" + Guid.NewGuid().ToString("N"));
+                Relocate(isDirectory, from, temp);
+                try
+                {
+                    Relocate(isDirectory, temp, to);
+                }
+                catch
+                {
+                    Relocate(isDirectory, temp, from); // on remet l'ancien nom
+                    throw;
+                }
+            }
+            else
+            {
+                Relocate(isDirectory, from, to);
+            }
+
+            return Task.CompletedTask;
+        }
+        catch (Exception ex) when (ex is not AppException)
+        {
+            throw Translate(ex, from);
+        }
+    }
+
+    private static void Relocate(bool isDirectory, string from, string to)
+    {
+        if (isDirectory) Directory.Move(from, to);
+        else File.Move(from, to);
+    }
+
     public async Task WriteAsync(string path, string content, FileEncoding encoding, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(content);

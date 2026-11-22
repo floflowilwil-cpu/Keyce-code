@@ -39,6 +39,44 @@ public static class FileEncodingCodec
         }
     }
 
+    /// <summary>
+    /// Décode avec un encodage imposé (« Rouvrir avec l'encodage… »). Un BOM qui correspond à l'encodage est retiré
+    /// du texte ; les octets invalides deviennent « � ».
+    /// </summary>
+    public static FileContent DecodeAs(byte[] bytes, FileEncoding encoding)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        ArgumentNullException.ThrowIfNull(encoding);
+
+        static bool Starts(byte[] data, params byte[] bom) =>
+            data.Length >= bom.Length && data.AsSpan(0, bom.Length).SequenceEqual(bom);
+
+        switch (encoding.Name)
+        {
+            case "utf-8":
+            {
+                int skip = Starts(bytes, 0xEF, 0xBB, 0xBF) ? 3 : 0;
+                return new FileContent(new UTF8Encoding(false).GetString(bytes, skip, bytes.Length - skip), encoding);
+            }
+            case "utf-16le":
+            {
+                int skip = Starts(bytes, 0xFF, 0xFE) ? 2 : 0;
+                return new FileContent(Encoding.Unicode.GetString(bytes, skip, bytes.Length - skip), encoding);
+            }
+            case "utf-16be":
+            {
+                int skip = Starts(bytes, 0xFE, 0xFF) ? 2 : 0;
+                return new FileContent(Encoding.BigEndianUnicode.GetString(bytes, skip, bytes.Length - skip), encoding);
+            }
+            case "windows-1252":
+                return new FileContent(Encoding.GetEncoding(1252).GetString(bytes), encoding);
+            case "iso-8859-1":
+                return new FileContent(Encoding.Latin1.GetString(bytes), encoding);
+            default:
+                throw new AppException(ErrorCode.InvalidArgument, $"Encodage non pris en charge : {encoding.Name}");
+        }
+    }
+
     public static byte[] Encode(string content, FileEncoding encoding)
     {
         ArgumentNullException.ThrowIfNull(content);

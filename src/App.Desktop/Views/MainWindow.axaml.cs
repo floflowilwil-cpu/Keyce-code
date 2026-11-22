@@ -366,6 +366,15 @@ public partial class MainWindow : Window
             }
         }
 
+        if (e.Key == Key.F2 && !ctrl && _vm.SelectedNode is not null &&
+            FocusManager?.GetFocusedElement() is not TextBox &&
+            !ReferenceEquals(FocusManager?.GetFocusedElement(), CodeEditor))
+        {
+            _ = RenameSelectedAsync();
+            e.Handled = true;
+            return;
+        }
+
         if (ctrl && e.Key == Key.F)
         {
             OnFind(null, null!);
@@ -565,6 +574,25 @@ public partial class MainWindow : Window
 
         if (choice == 0)
             await _vm.DeleteNodeAsync(node);
+    }
+
+    private void OnRenameSelected(
+        object? sender,
+        RoutedEventArgs e) =>
+        _ = RenameSelectedAsync();
+
+    private async Task RenameSelectedAsync()
+    {
+        if (_vm?.SelectedNode is not { } node)
+            return;
+
+        string? name = await Prompt(
+            "Renommer",
+            node.IsDirectory ? "Nouveau nom du dossier :" : "Nouveau nom du fichier :",
+            node.Name);
+
+        if (name is not null)
+            await _vm.RenameNodeAsync(node, name);
     }
 
     private void OnRefreshExplorer(
@@ -1272,11 +1300,13 @@ public partial class MainWindow : Window
 
     private async Task<string?> Prompt(
         string title,
-        string label)
+        string label,
+        string? initialText = null)
     {
         var box = new TextBox
         {
-            MinWidth = 200
+            MinWidth = 200,
+            Text = initialText ?? ""
         };
 
         var ok = new Button
@@ -1322,7 +1352,18 @@ public partial class MainWindow : Window
             }
         };
 
-        dialog.Opened += (_, _) => box.Focus();
+        dialog.Opened += (_, _) =>
+        {
+            box.Focus();
+
+            if (initialText is not null)
+            {
+                // Sélectionne le nom sans l'extension pour pouvoir le retaper directement.
+                int dot = initialText.LastIndexOf('.');
+                box.SelectionStart = 0;
+                box.SelectionEnd = dot > 0 ? dot : initialText.Length;
+            }
+        };
 
         await dialog.ShowDialog(this);
 

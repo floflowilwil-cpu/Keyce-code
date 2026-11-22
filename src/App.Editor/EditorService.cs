@@ -252,6 +252,157 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
         if (info is not null) DocumentStateChanged(this, info);
     }
 
+    /// <summary>Relit le fichier d'un document ouvert : avec l'encodage imposé par l'utilisateur s'il y en a un, sinon détecté.</summary>
+    private async Task<FileContent> ReadContentForAsync(Document doc, CancellationToken ct)
+    {
+        string path = doc.Path!;
+        FileEncoding? forced;
+        lock (doc.SyncRoot) forced = doc.EncodingForced ? doc.Encoding : null;
+
+        if (forced is not null && _files is IEncodedFileService encoded)
+        {
+            try { return await encoded.ReadAsEncodingAsync(path, forced, ct).ConfigureAwait(false); }
+            catch (NotSupportedException) { /* service sans cette fonction : détection automatique */ }
+        }
+        return await ReadContentAsync(path, ct).ConfigureAwait(false);
+    }
+
+    public LineEndingStyle GetLineEnding(DocumentId id)
+    {
+        var doc = Get(id);
+        lock (doc.SyncRoot) return doc.LineEnding == LineEnding.CrLf ? LineEndingStyle.CrLf : LineEndingStyle.Lf;
+    }
+
+    public void SetLineEnding(DocumentId id, LineEndingStyle style)
+    {
+        if (!Enum.IsDefined(style))
+            throw new AppException(ErrorCode.InvalidArgument, $"Fin de ligne inconnue : {style}.");
+
+        var doc = Get(id);
+        DocumentInfo? info = null;
+        lock (doc.SyncRoot)
+        {
+            var wanted = style == LineEndingStyle.CrLf ? LineEnding.CrLf : LineEnding.Lf;
+            if (doc.LineEnding != wanted)
+            {
+                doc.LineEnding = wanted;
+                info = doc.ToInfo();
+            }
+        }
+        if (info is not null) DocumentStateChanged(this, info);
+    }
+
+    public async Task ReopenWithEncodingAsync(DocumentId id, FileEncoding encoding, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(encoding);
+        if (!FileEncoding.Supported.Contains(encoding))
+            throw new AppException(ErrorCode.InvalidArgument, $"Encodage non pris en charge : {encoding.Name}.");
+
+        var doc = Get(id);
+        if (doc.Path is null)
+            throw new AppException(ErrorCode.InvalidArgument, "Ce document n'a pas de fichier à relire.");
+        if (_files is not IEncodedFileService encoded)
+            throw new AppException(ErrorCode.InvalidArgument, "Ce service de fichiers ne gère pas les encodages.");
+
+        await doc.ExternalCheckLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            FileContent content;
+            try
+            {
+                content = await encoded.ReadAsEncodingAsync(doc.Path, encoding, ct).ConfigureAwait(false);
+            }
+            catch (NotSupportedException ex)
+            {
+                throw new AppException(ErrorCode.InvalidArgument, ex.Message, ex);
+            }
+
+            TextEdit? applied;
+            DocumentInfo changedState;
+            int version;
+            lock (doc.SyncRoot)
+            {
+                if (doc.IsDirty)
+                    throw new AppException(ErrorCode.Conflict,
+                        "Le document a des modifications non enregistrées : enregistrez-les ou annulez-les avant de changer d'encodage.");
+
+                doc.Encoding = content.Encoding;
+                doc.EncodingForced = true;
+                applied = doc.ReplaceFromDisk(content.Text);
+                if (applied is not null) NormalizeCarets(id, doc);
+                changedState = doc.ToInfo();
+                version = doc.Version;
+            }
+            if (applied is not null) Raise(id, [applied], changedState, version);
+            else DocumentStateChanged(this, changedState);
+        }
+        finally
+        {
+            doc.ExternalCheckLock.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<DocumentInfo>> MovePathAsync(string oldPath, string newPath, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(oldPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newPath);
+        string from = Path.TrimEndingDirectorySeparator(Path.GetFullPath(oldPath));
+        string to = Path.TrimEndingDirectorySeparator(Path.GetFullPath(newPath));
+
+        var affected = _documents.Values
+            .Where(d => d.Path is not null && IsSameOrInside(d.Path, from))
+            .ToList();
+
+        // Pendant le renommage, les événements de l'ancien chemin ne doivent pas faire croire à une suppression.
+        foreach (var d in affected) d.IsMoving = true;
+        try
+        {
+            try
+            {
+                await _files.MoveAsync(from, to, ct).ConfigureAwait(false);
+            }
+            catch (NotSupportedException ex)
+            {
+                throw new AppException(ErrorCode.InvalidArgument, ex.Message, ex);
+            }
+
+            var infos = new List<DocumentInfo>();
+            foreach (var doc in affected)
+            {
+                string previous;
+                DocumentInfo info;
+                lock (doc.SyncRoot)
+                {
+                    previous = doc.Path!;
+                    doc.SetPath(Path.GetFullPath(to + previous[from.Length..]));
+                    info = doc.ToInfo();
+                }
+
+                _byPath.TryRemove(previous, out _);
+                _byPath.TryAdd(info.Path!, doc.Id);
+
+                if (_watchers.TryRemove(doc.Id, out var oldWatcher)) oldWatcher.Dispose();
+                StartWatching(doc);
+                infos.Add(info);
+            }
+
+            foreach (var info in infos) DocumentStateChanged(this, info);
+            return infos;
+        }
+        finally
+        {
+            foreach (var d in affected) d.IsMoving = false;
+        }
+    }
+
+    private static bool IsSameOrInside(string path, string folderOrFile)
+    {
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        string full = Path.GetFullPath(path);
+        return string.Equals(full, folderOrFile, comparison) ||
+               full.StartsWith(folderOrFile + Path.DirectorySeparatorChar, comparison);
+    }
+
     /// <summary>Lit un fichier avec détection d'encodage si le service de fichiers le permet (sinon UTF-8).</summary>
     private async Task<FileContent> ReadContentAsync(string path, CancellationToken ct)
     {
@@ -368,7 +519,7 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
             FileContent content;
             try
             {
-                content = await ReadContentAsync(doc.Path, ct).ConfigureAwait(false);
+                content = await ReadContentForAsync(doc, ct).ConfigureAwait(false);
             }
             catch (AppException ex) when (ex.Code == ErrorCode.NotFound)
             {
@@ -431,7 +582,7 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
         await doc.ExternalCheckLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var content = await ReadContentAsync(doc.Path, ct).ConfigureAwait(false);
+            var content = await ReadContentForAsync(doc, ct).ConfigureAwait(false);
             string raw = content.Text;
 
             TextEdit? applied;
@@ -467,7 +618,7 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
         await doc.ExternalCheckLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            string raw = (await ReadContentAsync(doc.Path, ct).ConfigureAwait(false)).Text;
+            string raw = (await ReadContentForAsync(doc, ct).ConfigureAwait(false)).Text;
             lock (doc.SyncRoot)
             {
                 doc.DiskText = TextModel.NormalizeNewLines(raw);
@@ -499,6 +650,10 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
 
     private void OnFileChanged(DocumentId id, string path, FileChange change)
     {
+        // Renommage en cours, ou document déjà déplacé : l'événement concerne l'ancien chemin.
+        if (_documents.TryGetValue(id, out var current) && (current.IsMoving || current.Path is null || !PathsEqual(current.Path, path)))
+            return;
+
         bool movedAway = change.Kind == FileChangeKind.Renamed &&
                          change.OldPath is not null &&
                          PathsEqual(change.OldPath, path);
@@ -507,6 +662,7 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
         {
             try
             {
+                if (_documents.TryGetValue(id, out var d) && (d.Path is null || !PathsEqual(d.Path, path))) return;
                 if (change.Kind == FileChangeKind.Deleted || movedAway)
                     ExternalChange(this, new ExternalChangeEventArgs(id, path, ExternalChangeKind.Deleted));
                 else

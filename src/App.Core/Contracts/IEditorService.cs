@@ -51,6 +51,33 @@ public interface IEditorService
     /// </summary>
     void SetEncoding(DocumentId id, FileEncoding encoding);
 
+    /// <summary>
+    /// Renomme ou déplace un fichier ou un dossier sur le disque ET met à jour les documents ouverts qui s'y trouvent
+    /// (ils restent ouverts, avec leur historique et leurs modifications non enregistrées, sous le nouveau chemin).
+    /// Retourne l'état des documents déplacés. DocumentStateChanged est levé pour chacun.
+    /// Lève NotFound, AlreadyExists ou InvalidArgument comme <see cref="IFileService.MoveAsync"/>.
+    /// </summary>
+    Task<IReadOnlyList<DocumentInfo>> MovePathAsync(string oldPath, string newPath, CancellationToken ct = default) =>
+        throw new NotSupportedException();
+
+    /// <summary>
+    /// Relit le fichier du disque en forçant l'encodage (« Rouvrir avec l'encodage… ») : à utiliser quand la détection
+    /// automatique s'est trompée. Remplace le texte, vide l'historique Undo et marque le document propre.
+    /// Lève InvalidArgument (document sans fichier, encodage inconnu, service de fichiers sans encodage) ou Conflict
+    /// si le document a des modifications non enregistrées. DocumentChanged et DocumentStateChanged sont levés.
+    /// </summary>
+    Task ReopenWithEncodingAsync(DocumentId id, FileEncoding encoding, CancellationToken ct = default) =>
+        throw new NotSupportedException();
+
+    /// <summary>Fin de ligne utilisée à l'enregistrement : celle du fichier ouvert (détectée), ou celle de la plateforme.</summary>
+    LineEndingStyle GetLineEnding(DocumentId id) => throw new NotSupportedException();
+
+    /// <summary>
+    /// Change la fin de ligne d'enregistrement (CRLF ⇄ LF). Le texte en mémoire ne change pas, mais le document
+    /// est « modifié » tant que la fin de ligne diffère de celle du fichier enregistré. DocumentStateChanged est levé.
+    /// </summary>
+    void SetLineEnding(DocumentId id, LineEndingStyle style) => throw new NotSupportedException();
+
     /// <summary>Ferme le document (arrête aussi la surveillance du fichier). False si déjà fermé.</summary>
     bool CloseDocument(DocumentId id);
 

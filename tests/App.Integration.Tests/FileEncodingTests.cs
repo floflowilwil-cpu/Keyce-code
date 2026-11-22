@@ -200,4 +200,70 @@ public sealed class FileEncodingTests : IDisposable
         var ex = await Assert.ThrowsAsync<AppException>(() => _service.ReadWithEncodingAsync(P("absent.txt")));
         Assert.Equal(ErrorCode.NotFound, ex.Code);
     }
+
+    // ---------- Relecture avec un encodage imposé ----------
+
+    [Fact]
+    public void DecodeAs_Windows1252_ReadsLegacyBytes()
+    {
+        var result = FileEncodingCodec.DecodeAs([0xE9, 0x74, 0xE9], FileEncoding.Windows1252);
+
+        Assert.Equal("été", result.Text);
+        Assert.Equal(FileEncoding.Windows1252, result.Encoding);
+    }
+
+    [Fact]
+    public void DecodeAs_Utf8_OnLegacyBytes_ReplacesInvalidBytes()
+    {
+        var result = FileEncodingCodec.DecodeAs([0x61, 0xE9, 0x62], FileEncoding.Utf8);
+
+        Assert.Equal("a\uFFFDb", result.Text);
+    }
+
+    [Fact]
+    public void DecodeAs_Windows1252_OnUtf8Bytes_ShowsTheClassicMojibake()
+    {
+        var result = FileEncodingCodec.DecodeAs(Encoding.UTF8.GetBytes("é"), FileEncoding.Windows1252);
+
+        Assert.Equal("Ã©", result.Text);
+    }
+
+    [Fact]
+    public void DecodeAs_Utf8_RemovesAMatchingBom()
+    {
+        byte[] bytes = [0xEF, 0xBB, 0xBF, 0x61];
+
+        Assert.Equal("a", FileEncodingCodec.DecodeAs(bytes, FileEncoding.Utf8).Text);
+        Assert.Equal("a", FileEncodingCodec.DecodeAs(bytes, FileEncoding.Utf8Bom).Text);
+    }
+
+    [Fact]
+    public void DecodeAs_Utf16_RemovesItsBom()
+    {
+        byte[] le = [0xFF, 0xFE, 0x61, 0x00];
+        byte[] be = [0xFE, 0xFF, 0x00, 0x61];
+
+        Assert.Equal("a", FileEncodingCodec.DecodeAs(le, FileEncoding.Utf16Le).Text);
+        Assert.Equal("a", FileEncodingCodec.DecodeAs(be, FileEncoding.Utf16Be).Text);
+    }
+
+    [Fact]
+    public async Task ReadAsEncodingAsync_ReadsTheFileWithTheGivenEncoding()
+    {
+        await File.WriteAllBytesAsync(P("legacy.txt"), [0x63, 0x61, 0x66, 0xE9]);
+
+        var content = await _service.ReadAsEncodingAsync(P("legacy.txt"), FileEncoding.Windows1252);
+
+        Assert.Equal("café", content.Text);
+        Assert.Equal(FileEncoding.Windows1252, content.Encoding);
+    }
+
+    [Fact]
+    public async Task ReadAsEncodingAsync_MissingFile_ThrowsNotFound()
+    {
+        var ex = await Assert.ThrowsAsync<AppException>(() =>
+            _service.ReadAsEncodingAsync(P("absent.txt"), FileEncoding.Utf8));
+
+        Assert.Equal(ErrorCode.NotFound, ex.Code);
+    }
 }
