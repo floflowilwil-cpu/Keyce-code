@@ -16,6 +16,14 @@ public interface IRunPlanner
     /// </summary>
     RunPlan PlanRun(string filePath);
 
+    /// <summary>
+    /// Prépare le débogage du fichier, quel que soit son langage (C#, Python, Go, C, C++, Rust) :
+    /// compilation éventuelle et programme à lancer. Lève <see cref="NotSupportedException"/>
+    /// si le langage n'est pas pris en charge et <see cref="InvalidOperationException"/>
+    /// si le compilateur ou l'interpréteur est introuvable.
+    /// </summary>
+    DebugPlan PlanDebug(string filePath);
+
     /// <summary>Plan de compilation du projet .NET qui contient le fichier, préalable au débogage.</summary>
     RunPlan PlanDebugBuild(string filePath);
 

@@ -1,6 +1,8 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
@@ -11,9 +13,45 @@ namespace App.Integrations.Debug;
 
 public sealed class DebugService : IDebugService
 {
-    private sealed class DebugSession(Process process)
+    private sealed class DebugSession(
+        Process process,
+        DebugAdapterDefinition adapter) : IDisposable
     {
         public Process Process { get; } = process;
+
+        public DebugAdapterDefinition Adapter { get; } = adapter;
+
+        /// <summary>Flux d'écriture des requêtes DAP (stdin du processus ou socket TCP).</summary>
+        public Stream? Input { get; set; }
+
+        /// <summary>Flux de lecture des messages DAP (stdout du processus ou socket TCP).</summary>
+        public Stream? Output { get; set; }
+
+        public TcpClient? Connection { get; set; }
+
+        public Task? StdoutDrainTask { get; set; }
+
+        public object BreakpointLock { get; } = new();
+
+        /// <summary>Lignes des points d'arrêt par fichier : DAP remplace la liste du fichier à chaque envoi.</summary>
+        public Dictionary<string, List<int>> Breakpoints { get; } = new(
+            OperatingSystem.IsWindows()
+                ? StringComparer.OrdinalIgnoreCase
+                : StringComparer.Ordinal);
+
+        public void Dispose()
+        {
+            try
+            {
+                Connection?.Dispose();
+            }
+            catch (Exception)
+            {
+                // Connexion déjà fermée.
+            }
+
+            Process.Dispose();
+        }
 
         public SemaphoreSlim WriteGate { get; } = new(1, 1);
 
@@ -39,7 +77,7 @@ public sealed class DebugService : IDebugService
 
         public Task? ReaderTask { get; set; }
 
-        public Task? ErrorReaderTask { get; set; }
+        public Task<string>? ErrorReaderTask { get; set; }
 
         public int LastStoppedThreadId { get; set; }
 
@@ -49,39 +87,17 @@ public sealed class DebugService : IDebugService
     private readonly ConcurrentDictionary<DebugSessionId, DebugSession>
         _sessions = new();
 
-    private static string ResolveDebuggerPath()
+    private readonly DebugAdapterRegistry _registry;
+
+    public DebugService() : this(DebugAdapterRegistry.CreateDefault())
     {
-        string scoopPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            "scoop",
-            "shims",
-            "netcoredbg.exe");
+    }
 
-        if (File.Exists(scoopPath))
-            return scoopPath;
-
-        string? path = Environment.GetEnvironmentVariable("PATH");
-
-        if (!string.IsNullOrWhiteSpace(path))
-        {
-            foreach (string directory in path.Split(
-                Path.PathSeparator,
-                StringSplitOptions.RemoveEmptyEntries))
-            {
-                string executable = Path.Combine(
-                    directory.Trim(),
-                    OperatingSystem.IsWindows()
-                        ? "netcoredbg.exe"
-                        : "netcoredbg");
-
-                if (File.Exists(executable))
-                    return executable;
-            }
-        }
-
-        throw new FileNotFoundException(
-            "NetCoreDbg est introuvable. Vérifiez son installation ou ajoutez son dossier au PATH.",
-            scoopPath);
+    /// <param name="registry">Adaptateurs de débogage disponibles (un par langage).</param>
+    public DebugService(DebugAdapterRegistry registry)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+        _registry = registry;
     }
 
     public async Task<DebugSessionId> StartDebugAsync(
@@ -103,14 +119,10 @@ public sealed class DebugService : IDebugService
                 "Le programme à déboguer est introuvable.",
                 program);
 
-        if (!program.EndsWith(
-            ".dll",
-            StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ArgumentException(
-                "Le programme doit être un fichier .NET .dll.",
-                nameof(options));
-        }
+        DebugAdapterDefinition adapter =
+            _registry.Resolve(options.LanguageId, program);
+
+        adapter.ValidateProgram?.Invoke(program);
 
         string workingDirectory = Path.GetFullPath(
             options.WorkingDirectory
@@ -120,9 +132,17 @@ public sealed class DebugService : IDebugService
             throw new DirectoryNotFoundException(
                 $"Répertoire introuvable : {workingDirectory}");
 
+        int port = adapter.Transport == DebugTransport.Tcp
+            ? GetFreeTcpPort()
+            : 0;
+
+        DebugAdapterCommand command =
+            adapter.CreateCommand(port)
+            ?? throw new FileNotFoundException(adapter.MissingMessage);
+
         var startInfo = new ProcessStartInfo
         {
-            FileName = ResolveDebuggerPath(),
+            FileName = command.FileName,
             WorkingDirectory = workingDirectory,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
@@ -131,7 +151,8 @@ public sealed class DebugService : IDebugService
             CreateNoWindow = true
         };
 
-        startInfo.ArgumentList.Add("--interpreter=vscode");
+        foreach (string argument in command.Arguments)
+            startInfo.ArgumentList.Add(argument);
 
         var process = new Process
         {
@@ -145,26 +166,47 @@ public sealed class DebugService : IDebugService
         {
             if (!process.Start())
                 throw new InvalidOperationException(
-                    "Impossible de démarrer NetCoreDbg.");
+                    $"Impossible de démarrer {adapter.DebuggerName}.");
 
-            session = new DebugSession(process);
+            session = new DebugSession(process, adapter);
             sessionId = DebugSessionId.New();
 
             if (!_sessions.TryAdd(sessionId, session))
                 throw new InvalidOperationException(
                     "Impossible d'enregistrer la session de débogage.");
 
-            session.ReaderTask = ReadMessagesAsync(session);
             session.ErrorReaderTask =
                 process.StandardError.ReadToEndAsync();
 
             _ = MonitorProcessAsync(sessionId, session);
 
+            if (adapter.Transport == DebugTransport.Tcp)
+            {
+                session.Connection =
+                    await ConnectAsync(process, port, adapter, ct);
+
+                NetworkStream stream = session.Connection.GetStream();
+
+                session.Input = stream;
+                session.Output = stream;
+
+                // La sortie standard n'est pas du DAP : on la vide pour ne pas bloquer le processus.
+                session.StdoutDrainTask =
+                    process.StandardOutput.ReadToEndAsync();
+            }
+            else
+            {
+                session.Input = process.StandardInput.BaseStream;
+                session.Output = process.StandardOutput.BaseStream;
+            }
+
+            session.ReaderTask = ReadMessagesAsync(session);
+
             var initializeArguments = new JsonObject
             {
                 ["clientID"] = "Keyce-code",
                 ["clientName"] = "Keyce Code",
-                ["adapterID"] = "coreclr",
+                ["adapterID"] = adapter.AdapterId,
                 ["pathFormat"] = "path",
                 ["linesStartAt1"] = true,
                 ["columnsStartAt1"] = true,
@@ -177,37 +219,32 @@ public sealed class DebugService : IDebugService
                 initializeArguments,
                 ct);
 
-            var launchArguments = new JsonObject
-            {
-                ["program"] = program,
-                ["args"] = new JsonArray(
-                    (options.Arguments ?? Array.Empty<string>())
-                    .Select(argument =>
-                        (JsonNode?)JsonValue.Create(argument))
-                    .ToArray()),
-                ["cwd"] = workingDirectory,
-                ["stopAtEntry"] = true,
-                ["justMyCode"] = true
-            };
-
-            if (options.Environment is not null)
-            {
-                var environment = new JsonObject();
-
-                foreach (var variable in options.Environment)
-                    environment[variable.Key] = variable.Value;
-
-                launchArguments["env"] = environment;
-            }
+            JsonObject launchArguments = adapter.CreateLaunchArguments(
+                new DebugLaunchContext(
+                    program,
+                    options.Arguments ?? Array.Empty<string>(),
+                    workingDirectory,
+                    options.Environment));
 
             Task<JsonObject> launchTask = SendRequestAsync(
                 session,
                 "launch",
                 launchArguments,
-                ct);
+                ct,
+                adapter.StartupTimeout);
+
+            // Si le lancement échoue (compilation, programme invalide…), on remonte son erreur
+            // au lieu d'attendre l'événement « initialized » qui n'arrivera jamais.
+            Task first = await Task.WhenAny(
+                    session.Initialized.Task,
+                    launchTask)
+                .WaitAsync(adapter.StartupTimeout, ct);
+
+            if (first == launchTask)
+                await launchTask;
 
             await session.Initialized.Task.WaitAsync(
-                TimeSpan.FromSeconds(15),
+                adapter.StartupTimeout,
                 ct);
 
             await SendRequestAsync(
@@ -227,10 +264,14 @@ public sealed class DebugService : IDebugService
 
             return sessionId;
         }
-        catch
+        catch (Exception exception)
         {
+            string? details = null;
+
             if (session is not null)
             {
+                details = await ReadAdapterErrorAsync(session);
+
                 try
                 {
                     await ForceStopProcessAsync(session);
@@ -238,7 +279,7 @@ public sealed class DebugService : IDebugService
                 finally
                 {
                     _sessions.TryRemove(sessionId, out _);
-                    session.Process.Dispose();
+                    session.Dispose();
                 }
             }
             else
@@ -246,7 +287,108 @@ public sealed class DebugService : IDebugService
                 process.Dispose();
             }
 
+            if (details is not null
+                && exception is not OperationCanceledException)
+            {
+                throw new InvalidOperationException(
+                    exception.Message + Environment.NewLine + details,
+                    exception);
+            }
+
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Si l'adaptateur s'est arrêté de lui-même (outil mal installé, erreur de compilation…),
+    /// retourne sa sortie d'erreur et un conseil d'installation ; sinon null.
+    /// </summary>
+    private static async Task<string?> ReadAdapterErrorAsync(
+        DebugSession session)
+    {
+        try
+        {
+            await session.Process.WaitForExitAsync()
+                .WaitAsync(TimeSpan.FromSeconds(1));
+
+            if (session.Process.ExitCode == 0
+                || session.ErrorReaderTask is null)
+            {
+                return null;
+            }
+
+            string error = (await session.ErrorReaderTask
+                .WaitAsync(TimeSpan.FromSeconds(1))).Trim();
+
+            if (error.Length > 800)
+                error = error[..800] + "…";
+
+            string hint = session.Adapter.InstallHint;
+
+            return error.Length == 0
+                ? hint
+                : error + Environment.NewLine + hint;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static int GetFreeTcpPort()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+
+        listener.Start();
+
+        try
+        {
+            return ((IPEndPoint)listener.LocalEndpoint).Port;
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    private static async Task<TcpClient> ConnectAsync(
+        Process process,
+        int port,
+        DebugAdapterDefinition adapter,
+        CancellationToken ct)
+    {
+        var clock = Stopwatch.StartNew();
+
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (process.HasExited)
+                throw new InvalidOperationException(
+                    $"{adapter.DebuggerName} s'est arrêté avant d'accepter la connexion.");
+
+            var client = new TcpClient();
+
+            try
+            {
+                await client.ConnectAsync(IPAddress.Loopback, port, ct);
+                return client;
+            }
+            catch (SocketException)
+            {
+                client.Dispose();
+
+                if (clock.Elapsed >= adapter.StartupTimeout)
+                    throw new TimeoutException(
+                        $"Impossible de se connecter à {adapter.DebuggerName} (port {port}).");
+
+                await Task.Delay(100, ct);
+            }
+            catch
+            {
+                client.Dispose();
+                throw;
+            }
         }
     }
 
@@ -255,19 +397,18 @@ public sealed class DebugService : IDebugService
         CancellationToken ct)
     {
         Task completed = await Task.WhenAny(
-            session.InitialStopped.Task,
-            session.Ended.Task);
-
-        await completed.WaitAsync(
-            TimeSpan.FromSeconds(30),
-            ct);
+                session.InitialStopped.Task,
+                session.Ended.Task)
+            .WaitAsync(session.Adapter.StartupTimeout, ct);
 
         if (session.Ended.Task.IsCompleted
             && !session.InitialStopped.Task.IsCompleted)
         {
             throw new InvalidOperationException(
-                "NetCoreDbg a terminé la session avant le premier arrêt.");
+                $"{session.Adapter.DebuggerName} a terminé la session avant le premier arrêt.");
         }
+
+        await completed.WaitAsync(ct);
 
         await session.InitialStopped.Task.WaitAsync(ct);
     }
@@ -294,41 +435,90 @@ public sealed class DebugService : IDebugService
 
         EnsureSessionRunning(session);
 
+        string fullPath = Path.GetFullPath(breakpoint.Path);
+        int[] lines;
+        bool added = false;
+
+        lock (session.BreakpointLock)
+        {
+            if (!session.Breakpoints.TryGetValue(
+                fullPath,
+                out List<int>? known))
+            {
+                known = new List<int>();
+                session.Breakpoints[fullPath] = known;
+            }
+
+            if (!known.Contains(breakpoint.Line))
+            {
+                known.Add(breakpoint.Line);
+                added = true;
+            }
+
+            lines = known.ToArray();
+        }
+
+        // DAP remplace tous les points d'arrêt du fichier : on envoie la liste complète.
         var arguments = new JsonObject
         {
             ["source"] = new JsonObject
             {
-                ["path"] = Path.GetFullPath(breakpoint.Path)
+                ["path"] = fullPath
             },
-            ["breakpoints"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["line"] = breakpoint.Line
-                }
-            },
+            ["breakpoints"] = new JsonArray(
+                lines
+                    .Select(line => (JsonNode?)new JsonObject
+                    {
+                        ["line"] = line
+                    })
+                    .ToArray()),
             ["sourceModified"] = false
         };
 
-        JsonObject response = await SendRequestAsync(
-            session,
-            "setBreakpoints",
-            arguments,
-            ct);
+        bool accepted = false;
 
-        JsonArray? breakpoints =
-            response["body"]?["breakpoints"] as JsonArray;
+        try
+        {
+            JsonObject response = await SendRequestAsync(
+                session,
+                "setBreakpoints",
+                arguments,
+                ct);
 
-        if (breakpoints is null || breakpoints.Count == 0)
-            throw new InvalidOperationException(
-                "NetCoreDbg n'a retourné aucun breakpoint.");
+            JsonArray? breakpoints =
+                response["body"]?["breakpoints"] as JsonArray;
 
-        bool verified =
-            breakpoints[0]?["verified"]?.GetValue<bool>() ?? false;
+            if (breakpoints is null || breakpoints.Count == 0)
+                throw new InvalidOperationException(
+                    $"{session.Adapter.DebuggerName} n'a retourné aucun breakpoint.");
 
-        if (!verified)
-            throw new InvalidOperationException(
-                "NetCoreDbg n'a pas validé le breakpoint.");
+            int index = Array.IndexOf(lines, breakpoint.Line);
+
+            bool verified = index >= 0
+                && index < breakpoints.Count
+                && (breakpoints[index]?["verified"]?.GetValue<bool>() ?? false);
+
+            if (!verified)
+                throw new InvalidOperationException(
+                    $"{session.Adapter.DebuggerName} n'a pas validé le breakpoint.");
+
+            accepted = true;
+        }
+        finally
+        {
+            if (!accepted && added)
+            {
+                lock (session.BreakpointLock)
+                {
+                    if (session.Breakpoints.TryGetValue(
+                        fullPath,
+                        out List<int>? known))
+                    {
+                        known.Remove(breakpoint.Line);
+                    }
+                }
+            }
+        }
     }
 
     public async Task StepAsync(
@@ -508,7 +698,7 @@ public sealed class DebugService : IDebugService
                 }
             }
 
-            session.Process.Dispose();
+            session.Dispose();
 
             if (cancellationRequested || ct.IsCancellationRequested)
                 throw new OperationCanceledException(ct);
@@ -565,13 +755,14 @@ public sealed class DebugService : IDebugService
         DebugSession session,
         string command,
         JsonObject arguments,
-        CancellationToken ct)
+        CancellationToken ct,
+        TimeSpan? timeout = null)
     {
         ct.ThrowIfCancellationRequested();
 
         if (session.Process.HasExited)
             throw new InvalidOperationException(
-                "Le processus NetCoreDbg est déjà terminé.");
+                $"Le processus {session.Adapter.DebuggerName} est déjà terminé.");
 
         int sequence = Interlocked.Increment(
             ref session.NextSequence);
@@ -603,8 +794,9 @@ public sealed class DebugService : IDebugService
 
             try
             {
-                var stream =
-                    session.Process.StandardInput.BaseStream;
+                Stream stream = session.Input
+                    ?? throw new InvalidOperationException(
+                        "Le canal de communication DAP n'est pas ouvert.");
 
                 await stream.WriteAsync(header, ct);
                 await stream.WriteAsync(body, ct);
@@ -616,7 +808,7 @@ public sealed class DebugService : IDebugService
             }
 
             JsonObject response = await completion.Task.WaitAsync(
-                TimeSpan.FromSeconds(30),
+                timeout ?? TimeSpan.FromSeconds(30),
                 ct);
 
             if (response["success"]?.GetValue<bool>() == false)
@@ -640,8 +832,9 @@ public sealed class DebugService : IDebugService
     {
         try
         {
-            var stream =
-                session.Process.StandardOutput.BaseStream;
+            Stream stream = session.Output
+                ?? throw new InvalidOperationException(
+                    "Le canal de communication DAP n'est pas ouvert.");
 
             while (true)
             {
@@ -855,7 +1048,7 @@ public sealed class DebugService : IDebugService
             {
                 pending.TrySetException(
                     new EndOfStreamException(
-                        "NetCoreDbg a terminé son exécution."));
+                        $"{session.Adapter.DebuggerName} a terminé son exécution."));
             }
         }
         catch (Exception exception)

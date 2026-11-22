@@ -814,7 +814,8 @@ public partial class MainWindowViewModel
 
     // =====================================================================
     //  Bouton ▶ : exécute le fichier actif (le langage est détecté automatiquement)
-    //  et « Déboguer » : compile le projet .NET du fichier actif puis lance le débogueur.
+    //  et « Déboguer » : compile le fichier actif si le langage l'exige puis lance le débogueur
+    //  (C#, Python, Go, C, C++ et Rust).
     // =====================================================================
 
     [RelayCommand]
@@ -838,24 +839,38 @@ public partial class MainWindowViewModel
 
         string? sourcePath = ActiveTab?.Path;
 
-        RunPlan? plan = await PreparePlanAsync(path => _s.RunPlanner.PlanDebugBuild(path));
-        if (plan is null || sourcePath is null)
+        DebugPlan? debugPlan = null;
+        RunPlan? plan = await PreparePlanAsync(path =>
+        {
+            debugPlan = _s.RunPlanner.PlanDebug(path);
+
+            // Sans compilation (Python, Go), le plan est vide : il ne sert qu'à signaler les erreurs.
+            return debugPlan.Build
+                ?? new RunPlan(debugPlan.LanguageId, debugPlan.DisplayName, Array.Empty<RunStep>());
+        });
+
+        if (plan is null || debugPlan is null || sourcePath is null)
         {
             DebugStatus = ExecutionStatus;
             return;
         }
 
-        DebugStatus = "Compilation du projet…";
-        int? exitCode = await ExecutePlanAsync(plan);
-        if (exitCode != 0)
+        if (debugPlan.Build is { Steps.Count: > 0 } build)
         {
-            DebugStatus = "La compilation a échoué : débogage annulé.";
-            return;
+            DebugStatus = "Compilation…";
+            int? exitCode = await ExecutePlanAsync(build);
+            if (exitCode != 0)
+            {
+                DebugStatus = "La compilation a échoué : débogage annulé.";
+                return;
+            }
         }
 
         try
         {
-            DebugProgram = _s.RunPlanner.FindDebugAssembly(sourcePath);
+            // C# : l'assembly n'est connu qu'après la compilation.
+            DebugProgram = debugPlan.Program
+                ?? _s.RunPlanner.FindDebugAssembly(sourcePath);
         }
         catch (Exception ex)
         {
@@ -864,6 +879,7 @@ public partial class MainWindowViewModel
             return;
         }
 
+        _debugLanguageId = debugPlan.LanguageId;
         await StartDebug();
     }
 
@@ -1008,11 +1024,14 @@ public partial class MainWindowViewModel
     }
 
     // =====================================================================
-    //  Exécuter et déboguer (IDebugService, via NetCoreDbg)
+    //  Exécuter et déboguer (IDebugService : NetCoreDbg, debugpy, Delve, lldb-dap)
     // =====================================================================
 
     private readonly List<Breakpoint> _breakpoints = new();
     private DebugSessionId? _debugId;
+
+    /// <summary>Langage du prochain démarrage (renseigné par « Déboguer » ; sinon déduit de l'extension).</summary>
+    private string? _debugLanguageId;
 
     public ObservableCollection<string> Breakpoints { get; } = new();
 
@@ -1067,14 +1086,17 @@ public partial class MainWindowViewModel
         string program = DebugProgram.Trim();
         if (program.Length == 0)
         {
-            DebugStatus = "Indiquez le fichier .dll à déboguer.";
+            DebugStatus = "Indiquez le programme à déboguer (.dll, .py, .go ou exécutable).";
             return;
         }
 
         try
         {
             DebugStatus = "Démarrage…";
-            var id = await _s.Debugger.StartDebugAsync(new DebugStartOptions(program));
+            string? languageId = _debugLanguageId;
+            _debugLanguageId = null;
+            var id = await _s.Debugger.StartDebugAsync(
+                new DebugStartOptions(program, LanguageId: languageId));
             _debugId = id;
             IsDebugging = true;
 

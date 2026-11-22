@@ -934,14 +934,15 @@ public partial class MainWindow : Window
         var files = await StorageProvider.OpenFilePickerAsync(
             new FilePickerOpenOptions
             {
-                Title = "Choisir le programme .NET à déboguer",
+                Title = "Choisir le programme à déboguer",
                 AllowMultiple = false,
                 FileTypeFilter =
                 [
-                    new FilePickerFileType("Assembly .NET")
+                    new FilePickerFileType("Programmes (.NET, Python, Go, natif)")
                     {
-                        Patterns = ["*.dll"]
-                    }
+                        Patterns = ["*.dll", "*.py", "*.go", "*.exe", "*.out"]
+                    },
+                    FilePickerFileTypes.All
                 ]
             });
 
