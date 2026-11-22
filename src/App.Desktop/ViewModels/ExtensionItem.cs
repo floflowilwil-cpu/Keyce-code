@@ -7,7 +7,10 @@ using App.Core.Models;
 namespace App.Desktop.ViewModels;
 
 /// <summary>Une ligne de la liste des extensions installées.</summary>
-public sealed class ExtensionItem(ExtensionInfo info, string? availableUpdateVersion = null)
+public sealed class ExtensionItem(
+    ExtensionInfo info,
+    string? availableUpdateVersion = null,
+    bool showInstallProof = false)
 {
     public string Id => info.Manifest.Id;
     public string Title => $"{info.Manifest.Name}  v{info.Manifest.Version}";
@@ -19,7 +22,11 @@ public sealed class ExtensionItem(ExtensionInfo info, string? availableUpdateVer
     public bool HasReadme =>
         File.Exists(Path.Combine(info.InstallPath, "README.md"))
         || File.Exists(Path.Combine(info.InstallPath, "package.json"));
-    public string PackageDetails { get; } = BuildPackageDetails(info.InstallPath);
+    public bool ShowInstallProof => showInstallProof;
+    public bool ShowReadmeButton => showInstallProof && HasReadme;
+    public string PackageDetails { get; } = showInstallProof
+        ? BuildPackageDetails(info.InstallPath)
+        : string.Empty;
     public bool IsActive => info.State == ExtensionState.Active;
     public string StateText => IsActive ? "Active" : "Installée";
     public string ToggleLabel => IsActive ? "Désactiver" : "Activer";

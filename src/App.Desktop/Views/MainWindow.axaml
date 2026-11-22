@@ -918,7 +918,8 @@
                                                         <TextBlock Text="{Binding PackageDetails}"
                                                                    FontSize="11"
                                                                    TextWrapping="Wrap"
-                                                                   Foreground="#4ADE80" />
+                                                                   Foreground="#4ADE80"
+                                                                   IsVisible="{Binding ShowInstallProof}" />
                                                         <TextBlock Text="{Binding Permissions}"
                                                                    FontSize="11"
                                                                    TextWrapping="Wrap"
@@ -936,7 +937,7 @@
                                                         <Button Content="Ouvrir README / package.json"
                                                                 Classes="secondary"
                                                                 Click="OnExtensionOpenReadme"
-                                                                IsVisible="{Binding HasReadme}"
+                                                                IsVisible="{Binding ShowReadmeButton}"
                                                                 Padding="8,4" />
                                                         <Button Content="{Binding UpdateLabel}"
                                                                 Classes="primary"

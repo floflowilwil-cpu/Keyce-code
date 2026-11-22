@@ -1164,6 +1164,8 @@ public partial class MainWindowViewModel
     [ObservableProperty] private string _aiResponseText = "Posez une question à l'IA, générez du code ou modifiez le fichier ouvert.";
 
     private CancellationTokenSource? _catalogSearchCts;
+    private CancellationTokenSource? _installProofCts;
+    private string? _recentlyInstalledExtensionId;
     private bool _isCatalogBusy;
 
     partial void OnCatalogSearchQueryChanged(string value) =>
@@ -1210,7 +1212,11 @@ public partial class MainWindowViewModel
             foreach (ExtensionInfo info in _s.Extensions.Extensions.OrderBy(e => e.Manifest.Name))
             {
                 updatesById.TryGetValue(info.Manifest.Id, out string? nextVersion);
-                ExtensionItems.Add(new ExtensionItem(info, nextVersion));
+                bool showProof = string.Equals(
+                    info.Manifest.Id,
+                    _recentlyInstalledExtensionId,
+                    StringComparison.OrdinalIgnoreCase);
+                ExtensionItems.Add(new ExtensionItem(info, nextVersion, showProof));
             }
 
             if (updateSummary)
@@ -1324,7 +1330,9 @@ public partial class MainWindowViewModel
 
         try
         {
+            _recentlyInstalledExtensionId = id;
             ExtensionInfo info = await _s.ExtensionCatalog.InstallFromCatalogAsync(id);
+            _recentlyInstalledExtensionId = info.Manifest.Id;
             CatalogProgressText = $"Activation de '{info.Manifest.Name}'…";
             CatalogInstallProgress = 98;
             await _s.Extensions.ActivateAsync(info.Manifest.Id);
@@ -1345,16 +1353,38 @@ public partial class MainWindowViewModel
             Log($"{ExtensionsInfo}\nDossier : {info.InstallPath}\nFichiers : {string.Join(", ", extracted.Take(20))}");
             ShowOutput();
             await RefreshExtensionsAsync();
-            await OpenExtensionReadme(info.Manifest.Id);
+            _ = ClearInstallProofAfterDelayAsync(info.Manifest.Id);
         }
         catch (Exception ex)
         {
+            _recentlyInstalledExtensionId = null;
             ReportExtensionError(ex);
         }
         finally
         {
             IsCatalogInstalling = false;
             _isCatalogBusy = false;
+        }
+    }
+
+    private async Task ClearInstallProofAfterDelayAsync(string extensionId)
+    {
+        _installProofCts?.Cancel();
+        _installProofCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _installProofCts = cts;
+
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), cts.Token);
+            if (string.Equals(_recentlyInstalledExtensionId, extensionId, StringComparison.OrdinalIgnoreCase))
+            {
+                _recentlyInstalledExtensionId = null;
+                UI(() => _ = RefreshExtensionsAsync(updateSummary: true));
+            }
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
