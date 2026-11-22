@@ -1,5 +1,6 @@
 ﻿switch (args.FirstOrDefault())
 {
+        case "json": await JsonTest.RunAsync(); break;
     case "colors": await ColorTest.RunAsync(); break;
     case "highlight": await HighlightTest.RunAsync(); break;
     case "lsp-extras": await LspExtrasTest.RunAsync(); break;
