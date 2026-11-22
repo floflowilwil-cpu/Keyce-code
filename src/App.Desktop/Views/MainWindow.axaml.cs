@@ -69,6 +69,7 @@ public partial class MainWindow : Window
     {
         vm.PropertyChanged += OnViewModelPropertyChanged;
         vm.ConflictDetected += OnConflictDetected;
+        vm.SelectionRequested += OnSelectionRequested;
 
         CodeEditor.Attach(vm.EditorService, vm.EditorCommands, vm.SyntaxHighlighter);
         CodeEditor.DocumentId = vm.ActiveTab?.Id;
@@ -86,6 +87,7 @@ public partial class MainWindow : Window
     {
         vm.PropertyChanged -= OnViewModelPropertyChanged;
         vm.ConflictDetected -= OnConflictDetected;
+        vm.SelectionRequested -= OnSelectionRequested;
 
         CodeEditor.CaretChanged -= OnEditorCaretChanged;
         CodeEditor.SaveRequested -= OnEditorSaveRequested;
@@ -158,6 +160,20 @@ public partial class MainWindow : Window
         if (_vm is null) return;
         var caret = CodeEditor.CaretPosition;
         _vm.Position = $"Ln {caret.Line + 1}, Col {caret.Column + 1}";
+    }
+
+    // Le ViewModel a déplacé la sélection dans le moteur (recherche, aller à la ligne, problème…) :
+    // le contrôle ne le sait pas tant qu'on ne le lui dit pas.
+    // Cherche l'occurrence suivante / précédente PUIS demande au contrôle de défiler et de la surligner.
+    private void FindAndReveal(bool forward)
+    {
+        _vm?.FindNext(forward);
+        Dispatcher.UIThread.Post(CodeEditor.RevealCaret);
+    }
+
+    private void OnSelectionRequested(int anchor, int active)
+    {
+        Dispatcher.UIThread.Post(CodeEditor.RevealCaret);
     }
 
     private async void OnEditorSaveRequested(object? sender, EventArgs e)
@@ -386,8 +402,7 @@ public partial class MainWindow : Window
         }
         else if (e.Key == Key.F3 && _vm.HasFile)
         {
-            SyncSelection();
-            _vm.FindNext(!shift);
+            FindAndReveal(!shift);
             e.Handled = true;
         }
         else if (e.Key == Key.Escape && _vm.IsFindVisible)
@@ -747,16 +762,14 @@ public partial class MainWindow : Window
         object? sender,
         RoutedEventArgs e)
     {
-        SyncSelection();
-        _vm?.FindNext(true);
+        FindAndReveal(true);
     }
 
     private void OnFindPrevClick(
         object? sender,
         RoutedEventArgs e)
     {
-        SyncSelection();
-        _vm?.FindNext(false);
+        FindAndReveal(false);
     }
 
     private void OnFindClose(
@@ -773,8 +786,7 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Enter)
         {
-            SyncSelection();
-            _vm?.FindNext(
+            FindAndReveal(
                 !e.KeyModifiers.HasFlag(KeyModifiers.Shift));
 
             e.Handled = true;
