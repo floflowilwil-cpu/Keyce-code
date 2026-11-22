@@ -10,6 +10,16 @@ public readonly record struct DocumentId(Guid Value)
 /// (jamais de retour en arrière, même après Annuler) : il permet d'ignorer un événement plus ancien que
 /// l'état déjà connu (par exemple un <see cref="DocumentChangedEventArgs"/> reçu pendant l'ouverture).
 /// </summary>
+/// <summary>Fin de ligne utilisée à l'enregistrement (en mémoire, le texte est toujours normalisé en « \n »).</summary>
+public enum LineEndingStyle
+{
+    /// <summary>« \n » (Unix, macOS).</summary>
+    Lf,
+
+    /// <summary>« \r\n » (Windows).</summary>
+    CrLf
+}
+
 public sealed record DocumentInfo(DocumentId Id, string? Path, string LanguageId, bool IsDirty, int Version = 0);
 
 public sealed class DocumentChangedEventArgs(DocumentId id, IReadOnlyList<TextEdit> edits, int version = 0) : EventArgs
