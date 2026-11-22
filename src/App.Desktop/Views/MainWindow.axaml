@@ -70,6 +70,8 @@
         <KeyBinding Gesture="Ctrl+Shift+F"
                     Command="{Binding ShowPanelCommand}"
                     CommandParameter="1" />
+        <KeyBinding Gesture="Ctrl+F5" Command="{Binding RunActiveFileCommand}" />
+        <KeyBinding Gesture="F5" Command="{Binding DebugActiveFileCommand}" />
     </Window.KeyBindings>
 
     <Window.Styles>
@@ -1095,6 +1097,26 @@
                                     Spacing="4"
                                     Margin="6,0,8,0"
                                     VerticalAlignment="Center">
+                            <Button Classes="ghost"
+                                    Content="▶"
+                                    Foreground="#3FB950"
+                                    FontSize="15"
+                                    Command="{Binding RunActiveFileCommand}"
+                                    IsVisible="{Binding IsExecutionIdle}"
+                                    IsEnabled="{Binding HasFile}"
+                                    ToolTip.Tip="Exécuter le fichier actif (Ctrl+F5)" />
+                            <Button Classes="ghost"
+                                    Content="■"
+                                    Foreground="#F85149"
+                                    FontSize="15"
+                                    Command="{Binding StopExecutionCommand}"
+                                    IsVisible="{Binding IsExecuting}"
+                                    ToolTip.Tip="Arrêter l'exécution" />
+                            <Button Classes="ghost"
+                                    Content="Déboguer"
+                                    Command="{Binding DebugActiveFileCommand}"
+                                    IsEnabled="{Binding HasFile}"
+                                    ToolTip.Tip="Compiler et déboguer le fichier actif (F5)" />
                             <Button Classes="ghost"
                                     Content="Assistant IA"
                                     Command="{Binding FocusRightAiCommand}"
