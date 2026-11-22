@@ -1,5 +1,7 @@
 ﻿switch (args.FirstOrDefault())
 {
+    case "js": await TypeScriptTest.RunJavaScriptAsync(); break;
+    case "ts": await TypeScriptTest.RunTypeScriptAsync(); break;
     case "html": await HtmlCssTest.RunHtmlAsync(); break;
     case "css": await HtmlCssTest.RunCssAsync(); break;
     case "json": await JsonTest.RunAsync(); break;

@@ -15,13 +15,15 @@ public sealed partial class LanguageClient : ILanguageClient, IDisposable
     private static readonly TimeSpan InitializeTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
 
-           private static readonly Dictionary<string, (string Command, string Arguments)> Servers =
+             private static readonly Dictionary<string, (string Command, string Arguments)> Servers =
         new(StringComparer.OrdinalIgnoreCase)
         {
             ["python"] = ("python", "-m pylsp"),
             ["json"] = ("cmd.exe", "/c vscode-json-language-server --stdio"),
             ["html"] = ("cmd.exe", "/c vscode-html-language-server --stdio"),
             ["css"] = ("cmd.exe", "/c vscode-css-language-server --stdio"),
+            ["javascript"] = ("cmd.exe", "/c typescript-language-server --stdio"),
+            ["typescript"] = ("cmd.exe", "/c typescript-language-server --stdio"),
         };
 
     private static readonly Dictionary<string, string> Extensions =
@@ -32,6 +34,9 @@ public sealed partial class LanguageClient : ILanguageClient, IDisposable
             [".html"] = "html",
             [".htm"] = "html",
             [".css"] = "css",
+            [".js"] = "javascript",
+            [".mjs"] = "javascript",
+            [".ts"] = "typescript",
         };
 
     private readonly ConcurrentDictionary<string, LanguageServerProcess> _servers = new(StringComparer.OrdinalIgnoreCase);
@@ -60,7 +65,6 @@ public sealed partial class LanguageClient : ILanguageClient, IDisposable
         try
         {
             if (_servers.ContainsKey(languageId)) return;   // déjà démarré et vivant
-
             var server = new LanguageServerProcess();
             try
             {
@@ -77,10 +81,10 @@ public sealed partial class LanguageClient : ILanguageClient, IDisposable
 
                 var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(workspaceRoot)) + Path.DirectorySeparatorChar;
                 var initParams = new Lsp.InitializeParams
-                {
-                    ProcessId = Environment.ProcessId,
-                    RootUri = new Uri(root),
-                    Capabilities = new Lsp.ClientCapabilities()
+               {
+                  ProcessId = Environment.ProcessId,
+                  RootUri = new Uri(root),
+                  Capabilities = new Lsp.ClientCapabilities()
                 };
 
                 var init = await InvokeAsync<JToken?>(server.Rpc!, "initialize", initParams, InitializeTimeout, ct);
