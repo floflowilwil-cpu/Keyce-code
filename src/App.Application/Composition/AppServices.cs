@@ -20,6 +20,7 @@ public sealed class AppServices : IDisposable
 {
     private readonly LanguageClient _languageClient;
     private readonly LanguageSyncService _languageSync;
+    private readonly SyntaxHighlighter _highlighter;
     private readonly App.Editor.EditorService _editorService;
     private readonly HttpClient _httpClient;
 
@@ -34,6 +35,7 @@ public sealed class AppServices : IDisposable
         IDebugService debugger,
         LanguageClient languages,
         LanguageSyncService languageSync,
+        SyntaxHighlighter highlighter,
         ICommandService commandRegistry,
         ExtensionManager extensions,
         IExtensionCatalogService extensionCatalog,
@@ -53,6 +55,7 @@ public sealed class AppServices : IDisposable
         _languageClient = languages;
         Languages = languages;
         _languageSync = languageSync;
+        _highlighter = highlighter;
         CommandRegistry = commandRegistry;
         Extensions = extensions;
         ExtensionCatalog = extensionCatalog;
@@ -70,6 +73,9 @@ public sealed class AppServices : IDisposable
     public IExecutionService Execution { get; }
     public IDebugService Debugger { get; }
     public ILanguageClient Languages { get; }
+
+    /// <summary>Coloration syntaxique (suit seule les documents de l'éditeur ; à passer au contrôle d'édition).</summary>
+    public ISyntaxHighlighter Highlighter => _highlighter;
     public ICommandService CommandRegistry { get; }
     public ExtensionManager Extensions { get; }
     public IExtensionCatalogService ExtensionCatalog { get; }
@@ -95,6 +101,7 @@ public sealed class AppServices : IDisposable
         var debugger = new App.Integrations.Debug.DebugService();
         var languages = new LanguageClient();
         var languageSync = new LanguageSyncService(editor, languages, workspace);
+        var highlighter = new SyntaxHighlighter(editor);
         var commandRegistry = new CommandService();
 
         string appData = Path.Combine(
@@ -138,7 +145,7 @@ public sealed class AppServices : IDisposable
 
         return new AppServices(
             workspace, files, editor, editorCommands, git, terminal, execution, debugger,
-            languages, languageSync, commandRegistry, extensions, extensionCatalog,
+            languages, languageSync, highlighter, commandRegistry, extensions, extensionCatalog,
             gitHub, aiAssistant, httpClient);
     }
 
@@ -150,6 +157,7 @@ public sealed class AppServices : IDisposable
 
     public void Dispose()
     {
+        _highlighter.Dispose();
         _languageSync.Dispose();
         _languageClient.Dispose();
         _editorService.Dispose();

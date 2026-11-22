@@ -127,6 +127,7 @@ public partial class MainWindowViewModel : ObservableObject
     // Services exposés au contrôle d'édition natif de la fenêtre.
     public IEditorService EditorService => _s.Editor;
     public IEditorCommands EditorCommands => _s.EditorCommands;
+    public ISyntaxHighlighter SyntaxHighlighter => _s.Highlighter;
 
     partial void OnActiveTabChanged(
         DocumentTab? oldValue,

@@ -92,14 +92,16 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
         var doc = Get(id);
         TextEdit? applied;
         DocumentInfo? changedState;
+        int version;
         lock (doc.SyncRoot)
         {
             bool wasDirty = doc.IsDirty;
             applied = doc.Apply(edit);
             if (applied is not null) NormalizeCarets(id, doc);
+            version = doc.Version;
             changedState = doc.IsDirty != wasDirty ? doc.ToInfo() : null;
         }
-        if (applied is not null) Raise(id, [applied], changedState);
+        if (applied is not null) Raise(id, [applied], changedState, version);
     }
 
     public void ApplyEdits(DocumentId id, IReadOnlyList<TextEdit> edits)
@@ -108,14 +110,16 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
         var doc = Get(id);
         IReadOnlyList<TextEdit> applied;
         DocumentInfo? changedState;
+        int version;
         lock (doc.SyncRoot)
         {
             bool wasDirty = doc.IsDirty;
             applied = doc.ApplyBatch(edits);
             if (applied.Count > 0) NormalizeCarets(id, doc);
+            version = doc.Version;
             changedState = doc.IsDirty != wasDirty ? doc.ToInfo() : null;
         }
-        if (applied.Count > 0) Raise(id, applied, changedState);
+        if (applied.Count > 0) Raise(id, applied, changedState, version);
     }
 
     /// <inheritdoc />
@@ -150,14 +154,16 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
         var doc = Get(id);
         IReadOnlyList<TextEdit>? edits;
         DocumentInfo? changedState;
+        int version;
         lock (doc.SyncRoot)
         {
             bool wasDirty = doc.IsDirty;
             edits = doc.Undo();
             if (edits is not null) PlaceCaretsAfterHistoryStep(id, doc);
+            version = doc.Version;
             changedState = doc.IsDirty != wasDirty ? doc.ToInfo() : null;
         }
-        if (edits is not null) Raise(id, edits, changedState);
+        if (edits is not null) Raise(id, edits, changedState, version);
     }
 
     public void Redo(DocumentId id)
@@ -165,14 +171,16 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
         var doc = Get(id);
         IReadOnlyList<TextEdit>? edits;
         DocumentInfo? changedState;
+        int version;
         lock (doc.SyncRoot)
         {
             bool wasDirty = doc.IsDirty;
             edits = doc.Redo();
             if (edits is not null) PlaceCaretsAfterHistoryStep(id, doc);
+            version = doc.Version;
             changedState = doc.IsDirty != wasDirty ? doc.ToInfo() : null;
         }
-        if (edits is not null) Raise(id, edits, changedState);
+        if (edits is not null) Raise(id, edits, changedState, version);
     }
 
     public async Task SaveAsync(DocumentId id, CancellationToken ct = default)
@@ -378,6 +386,7 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
             IReadOnlyList<TextEdit>? edits = null;
             DocumentInfo? changedState = null;
             ExternalChangeKind? kind = null;
+            int version = 0;
 
             lock (doc.SyncRoot)
             {
@@ -392,6 +401,7 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
                     {
                         edits = [applied];
                         NormalizeCarets(id, doc);
+                        version = doc.Version;
                     }
                     kind = ExternalChangeKind.Reloaded;
                 }
@@ -402,7 +412,7 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
                 }
             }
 
-            if (edits is not null) Raise(id, edits, changedState);
+            if (edits is not null) Raise(id, edits, changedState, version);
             if (kind is not null) ExternalChange(this, new ExternalChangeEventArgs(id, doc.Path, kind.Value));
         }
         finally
@@ -426,15 +436,17 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
 
             TextEdit? applied;
             DocumentInfo? changedState;
+            int version;
             lock (doc.SyncRoot)
             {
                 bool wasDirty = doc.IsDirty;
                 doc.Encoding = content.Encoding;
                 applied = doc.ReplaceFromDisk(raw);
                 if (applied is not null) NormalizeCarets(id, doc);
+                version = doc.Version;
                 changedState = wasDirty ? doc.ToInfo() : null;
             }
-            if (applied is not null) Raise(id, [applied], changedState);
+            if (applied is not null) Raise(id, [applied], changedState, version);
             else if (changedState is not null) DocumentStateChanged(this, changedState);
         }
         finally
@@ -565,9 +577,9 @@ public sealed class EditorService : IEditorService, ITextModelSource, IDisposabl
             throw new AppException(ErrorCode.InvalidArgument, $"Position de curseur hors document : {position}.");
     }
 
-    private void Raise(DocumentId id, IReadOnlyList<TextEdit> edits, DocumentInfo? changedState)
+    private void Raise(DocumentId id, IReadOnlyList<TextEdit> edits, DocumentInfo? changedState, int version)
     {
-        DocumentChanged(this, new DocumentChangedEventArgs(id, edits));
+        DocumentChanged(this, new DocumentChangedEventArgs(id, edits, version));
         if (changedState is not null) DocumentStateChanged(this, changedState);
     }
 
