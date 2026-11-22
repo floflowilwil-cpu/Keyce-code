@@ -29,6 +29,7 @@ public partial class MainWindowViewModel
             if (e.PropertyName == "ErrorMessage") UI(UpdateGitState);
             else if (e.PropertyName is "StagedFiles" or "UnstagedFiles") UI(UpdateGitCounts);
         };
+        _s.Execution.OutputReceived += (_, e) => UI(() => OnExecutionOutputReceived(e));
         _s.Extensions.ExtensionChanged += (_, _) => UI(() => _ = RefreshExtensionsAsync());
         _s.CommandRegistry.CommandsChanged += (_, _) => UI(RefreshExtensionCommands);
         _s.ExtensionCatalog.DownloadProgressChanged += (_, p) => UI(() =>
@@ -554,6 +555,235 @@ public partial class MainWindowViewModel
     {
         StatusMessage = ex.Message;
         Log("Erreur : " + ex.Message);
+    }
+
+    // =====================================================================
+    //  Exécution simple (IExecutionService), indépendante du débogueur
+    // =====================================================================
+
+    private ExecutionSessionId? _executionSessionId;
+    private readonly List<ExecutionOutputEventArgs> _pendingExecutionOutput = new();
+
+    [ObservableProperty] private string _executionExecutable = "";
+    [ObservableProperty] private string _executionArguments = "";
+    [ObservableProperty] private string _executionWorkingDirectory = "";
+
+    // 0 = UTF-8 (65001), 1 = CP850.
+    [ObservableProperty] private int _executionOutputEncodingIndex;
+
+    public int ExecutionOutputCodePage => ExecutionOutputEncodingIndex == 1 ? 850 : 65001;
+
+    partial void OnExecutionOutputEncodingIndexChanged(int value)
+    {
+        OnPropertyChanged(nameof(ExecutionOutputCodePage));
+    }
+
+    [ObservableProperty] private string _executionStatus = "Aucun programme en cours d'exécution.";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsExecutionIdle))]
+    private bool _isExecutionStarting;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsExecutionIdle))]
+    private bool _isExecuting;
+
+    public bool IsExecutionIdle => !IsExecuting && !IsExecutionStarting;
+
+    [RelayCommand]
+    private async Task StartExecution()
+    {
+        if (!IsExecutionIdle)
+            return;
+
+        string executable = ExecutionExecutable.Trim();
+        if (executable.Length == 0)
+        {
+            ExecutionStatus = "Indiquez le programme à exécuter (par exemple dotnet, python ou un fichier .exe).";
+            return;
+        }
+
+        IReadOnlyList<string> arguments;
+        try
+        {
+            arguments = ParseExecutionArguments(ExecutionArguments);
+        }
+        catch (FormatException ex)
+        {
+            ExecutionStatus = ex.Message;
+            return;
+        }
+
+        string workingDirectory = ExecutionWorkingDirectory.Trim();
+        string? workingDirectoryOption = workingDirectory.Length == 0 ? null : workingDirectory;
+
+        _pendingExecutionOutput.Clear();
+        IsExecutionStarting = true;
+        ExecutionStatus = "Démarrage du programme…";
+
+        try
+        {
+            var options = new ExecutionStartOptions(
+                executable,
+                arguments,
+                workingDirectoryOption,
+                OutputCodePage: ExecutionOutputCodePage);
+
+            ExecutionSessionId id = await _s.Execution.StartExecutionAsync(options);
+            _executionSessionId = id;
+            IsExecuting = true;
+            IsExecutionStarting = false;
+
+            foreach (ExecutionOutputEventArgs pending in _pendingExecutionOutput)
+            {
+                if (pending.SessionId == id)
+                    AppendExecutionOutput(pending);
+            }
+
+            _pendingExecutionOutput.Clear();
+            ExecutionStatus = "Programme en cours d'exécution.";
+            Log($"Exécution démarrée : {executable}");
+            ShowOutput();
+            _ = MonitorExecutionAsync(id);
+        }
+        catch (Exception ex)
+        {
+            _executionSessionId = null;
+            _pendingExecutionOutput.Clear();
+            IsExecutionStarting = false;
+            IsExecuting = false;
+            ExecutionStatus = "Échec du démarrage : " + ex.Message;
+            Log("Exécution : " + ex.Message);
+            ShowOutput();
+        }
+    }
+
+    [RelayCommand]
+    private async Task StopExecution()
+    {
+        if (_executionSessionId is not { } id)
+            return;
+
+        ExecutionStatus = "Arrêt du programme…";
+        try
+        {
+            await _s.Execution.StopExecutionAsync(id);
+        }
+        catch (Exception ex)
+        {
+            ExecutionStatus = "Erreur lors de l'arrêt : " + ex.Message;
+            Log("Arrêt du processus : " + ex.Message);
+        }
+    }
+
+    private async Task MonitorExecutionAsync(ExecutionSessionId id)
+    {
+        try
+        {
+            ExecutionResult result = await _s.Execution.WaitForExitAsync(id);
+            UI(() =>
+            {
+                if (_executionSessionId != id)
+                    return;
+
+                _executionSessionId = null;
+                IsExecuting = false;
+                ExecutionStatus = $"Programme terminé (code de sortie : {result.ExitCode}).";
+                Log($"Processus terminé avec le code {result.ExitCode}.");
+                ShowOutput();
+            });
+        }
+        catch (Exception ex)
+        {
+            UI(() =>
+            {
+                if (_executionSessionId != id)
+                    return;
+
+                _executionSessionId = null;
+                IsExecuting = false;
+                ExecutionStatus = "Erreur pendant l'exécution : " + ex.Message;
+                Log("Exécution : " + ex.Message);
+                ShowOutput();
+            });
+        }
+    }
+
+    private void OnExecutionOutputReceived(ExecutionOutputEventArgs e)
+    {
+        if (_executionSessionId is { } activeId)
+        {
+            if (activeId == e.SessionId)
+                AppendExecutionOutput(e);
+
+            return;
+        }
+
+        // Le processus peut produire ses premiers caractères avant que StartExecutionAsync
+        // ait rendu son identifiant à l'interface. On les garde brièvement en attente.
+        if (IsExecutionStarting)
+            _pendingExecutionOutput.Add(e);
+    }
+
+    private void AppendExecutionOutput(ExecutionOutputEventArgs e)
+    {
+        if (e.Stream == ExecutionOutputStream.StandardError)
+            OutputText += "[stderr] " + e.Data;
+        else
+            OutputText += e.Data;
+
+        ShowOutput();
+    }
+
+    private static IReadOnlyList<string> ParseExecutionArguments(string input)
+    {
+        var arguments = new List<string>();
+        var current = new System.Text.StringBuilder();
+        bool insideQuotes = false;
+        bool tokenStarted = false;
+
+        for (int i = 0; i < input.Length; i++)
+        {
+            char character = input[i];
+
+            if (character == '\\' && insideQuotes && i + 1 < input.Length
+                && input[i + 1] is '"' or '\\')
+            {
+                current.Append(input[++i]);
+                tokenStarted = true;
+                continue;
+            }
+
+            if (character == '"')
+            {
+                insideQuotes = !insideQuotes;
+                tokenStarted = true;
+                continue;
+            }
+
+            if (char.IsWhiteSpace(character) && !insideQuotes)
+            {
+                if (tokenStarted)
+                {
+                    arguments.Add(current.ToString());
+                    current.Clear();
+                    tokenStarted = false;
+                }
+
+                continue;
+            }
+
+            current.Append(character);
+            tokenStarted = true;
+        }
+
+        if (insideQuotes)
+            throw new FormatException("Les guillemets des arguments ne sont pas équilibrés.");
+
+        if (tokenStarted)
+            arguments.Add(current.ToString());
+
+        return arguments;
     }
 
     // =====================================================================

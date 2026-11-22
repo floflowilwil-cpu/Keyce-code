@@ -1,3 +1,6 @@
+
+using System.Collections.Generic;
+
 namespace App.Core.Models;
 
 /// <summary>
@@ -15,7 +18,8 @@ public sealed record ExecutionStartOptions(
     string Executable,
     IReadOnlyList<string>? Arguments = null,
     string? WorkingDirectory = null,
-    IReadOnlyDictionary<string, string>? Environment = null);
+    IReadOnlyDictionary<string, string>? Environment = null,
+    int OutputCodePage = 65001);
 
 /// <summary>
 /// Résultat final d'une exécution.

@@ -662,6 +662,71 @@
                         <ScrollViewer IsVisible="{Binding IsRunActive}">
                             <StackPanel Margin="12,2,12,12" Spacing="10">
 
+                                <!-- Exécution simple, indépendante du débogueur -->
+                                <TextBlock Classes="section"
+                                           Text="EXÉCUTER UN PROGRAMME" />
+
+                                <TextBox Text="{Binding ExecutionExecutable}"
+                                         PlaceholderText="Programme : dotnet, python, node, monapp.exe…"
+                                         Padding="8,7"
+                                         IsEnabled="{Binding IsExecutionIdle}"
+                                         Background="{DynamicResource BgMain}"
+                                         Foreground="{DynamicResource TextMain}" />
+
+                                <TextBox Text="{Binding ExecutionArguments}"
+                                         PlaceholderText="Arguments : bin\Debug\net10.0\MonApp.dll --verbose"
+                                         Padding="8,7"
+                                         IsEnabled="{Binding IsExecutionIdle}"
+                                         Background="{DynamicResource BgMain}"
+                                         Foreground="{DynamicResource TextMain}" />
+
+                                <TextBox Text="{Binding ExecutionWorkingDirectory}"
+                                         PlaceholderText="Dossier de travail (facultatif)"
+                                         Padding="8,7"
+                                         IsEnabled="{Binding IsExecutionIdle}"
+                                         Background="{DynamicResource BgMain}"
+                                         Foreground="{DynamicResource TextMain}" />
+
+                                <TextBlock Text="ENCODAGE DE LA SORTIE"
+                                           Classes="section" />
+
+                                <ComboBox SelectedIndex="{Binding ExecutionOutputEncodingIndex}"
+                                          IsEnabled="{Binding IsExecutionIdle}"
+                                          HorizontalAlignment="Stretch">
+                                    <ComboBoxItem Content="UTF-8 (65001) — recommandé" />
+                                    <ComboBoxItem Content="CP850 — commandes Windows classiques" />
+                                </ComboBox>
+
+                                <Grid ColumnDefinitions="*,6,*">
+                                    <Button Grid.Column="0"
+                                            Content="▶ Exécuter"
+                                            Classes="primary"
+                                            Command="{Binding StartExecutionCommand}"
+                                            IsVisible="{Binding IsExecutionIdle}" />
+                                    <Button Grid.Column="2"
+                                            Content="■ Arrêter"
+                                            Classes="danger"
+                                            Command="{Binding StopExecutionCommand}"
+                                            IsVisible="{Binding IsExecuting}" />
+                                </Grid>
+
+                                <Border Classes="card"
+                                        BorderBrush="{DynamicResource Accent}"
+                                        BorderThickness="3,0,0,0">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Classes="section"
+                                                   Text="ÉTAT DE L'EXÉCUTION" />
+                                        <TextBlock Text="{Binding ExecutionStatus}"
+                                                   TextWrapping="Wrap"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextMain}" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Height="1"
+                                        Background="{DynamicResource Line}"
+                                        Margin="0,4" />
+
                                 <TextBlock Classes="section"
                                            Text="PROGRAMME À DÉBOGUER" />
 
@@ -745,7 +810,7 @@
                                             Command="{Binding ClearBreakpointsCommand}" />
                                 </Grid>
 
-                                <Button Content="●  Ajouter à la ligne du curseur"
+                                <Button Content="● Ajouter à la ligne du curseur"
                                         Classes="secondary"
                                         Click="OnAddBreakpoint" />
 
@@ -1576,7 +1641,7 @@
                                                 <Grid ColumnDefinitions="*,6,*" RowDefinitions="Auto,6,Auto">
                                                     <Button Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
                                                             Classes="secondary"
-                                                            Content="＋  Tout indexer"
+                                                            Content="Tout indexer"
                                                             Command="{Binding Git.StageAllCommand}" />
                                                     <Button Grid.Row="2" Grid.Column="0"
                                                             Classes="secondary"
