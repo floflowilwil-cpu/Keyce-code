@@ -376,8 +376,9 @@
                           Command="{Binding ShowBottomCommand}"
                           CommandParameter="2" />
                 <MenuItem Header="Exécuter une tâche..."
-                          Command="{Binding NotAvailableCommand}"
-                          CommandParameter="développeur 5|Exécuter une tâche" />
+                          Click="OnShowTasks" />
+                <MenuItem Header="Configurer les tâches..."
+                          Click="OnConfigureTasks" />
             </MenuItem>
 
             <MenuItem Header="_Aide">
@@ -741,13 +742,13 @@
                                            Text="PROGRAMME À DÉBOGUER" />
 
                                 <TextBox Text="{Binding DebugProgram}"
-                                         PlaceholderText="bin\Debug\net10.0\MonApp.dll"
+                                         PlaceholderText="MonApp.dll, script.py, main.go ou exécutable compilé"
                                          Padding="8,7"
                                          IsEnabled="{Binding IsDebugIdle}"
                                          Background="{DynamicResource BgMain}"
                                          Foreground="{DynamicResource TextMain}" />
 
-                                <Button Content="Parcourir un fichier .dll..."
+                                <Button Content="Parcourir un programme..."
                                         Classes="secondary"
                                         Click="OnBrowseProgram"
                                         IsEnabled="{Binding IsDebugIdle}" />
@@ -848,7 +849,7 @@
                                     <TextBlock TextWrapping="Wrap"
                                                FontSize="11"
                                                Foreground="{DynamicResource TextDim}"
-                                               Text="Prérequis : NetCoreDbg installé (par exemple « scoop install netcoredbg ») et un projet déjà compilé (dotnet build)." />
+                                               Text="F5 compile puis débogue le fichier actif : C# (NetCoreDbg), Python (debugpy), Go (Delve), C / C++ / Rust (lldb-dap). L'adaptateur du langage doit être installé et dans le PATH." />
                                 </Border>
                             </StackPanel>
                         </ScrollViewer>
