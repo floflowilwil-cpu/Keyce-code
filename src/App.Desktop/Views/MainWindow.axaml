@@ -540,6 +540,15 @@
                                 </Button>
                             </Grid>
 
+                            <Button DockPanel.Dock="Top"
+                                    Content="Ouvrir un autre projet / dossier..."
+                                    Classes="secondary"
+                                    Margin="12,0,12,6"
+                                    Padding="8,5"
+                                    FontSize="11"
+                                    Click="OnOpenFolder"
+                                    IsVisible="{Binding HasFolder}" />
+
                             <StackPanel DockPanel.Dock="Top"
                                         Margin="16,16"
                                         Spacing="10"
@@ -1029,11 +1038,6 @@
                                     Content="Git &amp; GitHub"
                                     Command="{Binding FocusRightGitCommand}"
                                     ToolTip.Tip="Afficher / masquer Git &amp; GitHub à droite" />
-                            <Button Classes="ghost"
-                                    Content="IA + Git"
-                                    Command="{Binding SetRightPanelTabCommand}"
-                                    CommandParameter="0"
-                                    ToolTip.Tip="Afficher l'Assistant IA et Git ensemble à droite" />
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -1320,18 +1324,8 @@
                             BorderBrush="{DynamicResource Line}"
                             BorderThickness="0,0,0,1"
                             Height="34">
-                        <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
+                        <Grid ColumnDefinitions="Auto,Auto,*,Auto">
                             <Grid Grid.Column="0">
-                                <Border Height="2"
-                                        VerticalAlignment="Bottom"
-                                        Background="{DynamicResource Accent}"
-                                        IsVisible="{Binding IsRightBothMode}" />
-                                <Button Classes="tab"
-                                        Content="IA + GIT"
-                                        Command="{Binding SetRightPanelTabCommand}"
-                                        CommandParameter="0" />
-                            </Grid>
-                            <Grid Grid.Column="1">
                                 <Border Height="2"
                                         VerticalAlignment="Bottom"
                                         Background="{DynamicResource Accent}"
@@ -1341,7 +1335,7 @@
                                         Command="{Binding SetRightPanelTabCommand}"
                                         CommandParameter="1" />
                             </Grid>
-                            <Grid Grid.Column="2">
+                            <Grid Grid.Column="1">
                                 <Border Height="2"
                                         VerticalAlignment="Bottom"
                                         Background="{DynamicResource Accent}"
@@ -1351,7 +1345,7 @@
                                         Command="{Binding SetRightPanelTabCommand}"
                                         CommandParameter="2" />
                             </Grid>
-                            <Button Grid.Column="4"
+                            <Button Grid.Column="3"
                                     Content="✕"
                                     Command="{Binding ToggleRightPanelCommand}"
                                     Background="Transparent"
@@ -1361,12 +1355,10 @@
                         </Grid>
                     </Border>
 
-                    <Grid x:Name="RightContentGrid"
-                          RowDefinitions="43*,4,57*">
+                    <Grid x:Name="RightContentGrid">
 
                         <!-- Section 1 : Assistant IA directement visible sur l'interface -->
-                        <DockPanel Grid.Row="0"
-                                   IsVisible="{Binding IsRightAiVisible}">
+                        <DockPanel IsVisible="{Binding IsRightAiVisible}">
                             <TextBlock DockPanel.Dock="Top"
                                        Classes="section"
                                        Text="ASSISTANT IA (CHAT &amp; CODE)"
@@ -1415,19 +1407,70 @@
                             </ScrollViewer>
                         </DockPanel>
 
-                        <GridSplitter Grid.Row="1"
-                                      ResizeDirection="Rows"
-                                      Background="{DynamicResource Line}"
-                                      HorizontalAlignment="Stretch"
-                                      IsVisible="{Binding IsRightBothMode}" />
-
                         <!-- Section 2 : Contrôle de code source (Git & GitHub) à droite de l'interface -->
-                        <DockPanel Grid.Row="2"
-                                   IsVisible="{Binding IsRightGitVisible}">
+                        <DockPanel IsVisible="{Binding IsRightGitVisible}">
                             <TextBlock DockPanel.Dock="Top"
                                        Classes="section"
                                        Text="CONTRÔLE DE CODE SOURCE (GIT &amp; GITHUB)"
                                        Margin="12,8,12,6" />
+
+                            <StackPanel DockPanel.Dock="Top"
+                                        Margin="12,0,12,6"
+                                        Spacing="6">
+                                <Grid ColumnDefinitions="*,6,*">
+                                    <Button Grid.Column="0"
+                                            Content="Ouvrir un autre projet..."
+                                            Classes="secondary"
+                                            FontSize="11"
+                                            Padding="6,5"
+                                            Click="OnOpenFolder" />
+                                    <Button Grid.Column="2"
+                                            Content="Mes projets sur ce PC"
+                                            Classes="secondary"
+                                            FontSize="11"
+                                            Padding="6,5"
+                                            Command="{Binding ToggleProjectsListCommand}" />
+                                </Grid>
+
+                                <Border Classes="card"
+                                        Padding="8"
+                                        MaxHeight="180"
+                                        IsVisible="{Binding IsProjectsListVisible}">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Top"
+                                                   Text="{Binding ProjectsSummary}"
+                                                   FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextAccent}"
+                                                   Margin="0,0,0,4" />
+                                        <ScrollViewer>
+                                            <ItemsControl ItemsSource="{Binding LocalProjects}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate DataType="vm:LocalProjectItem">
+                                                        <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                                                            <StackPanel Grid.Column="0">
+                                                                <TextBlock Text="{Binding Name}"
+                                                                           FontSize="12"
+                                                                           FontWeight="SemiBold"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Foreground="{DynamicResource TextMain}" />
+                                                                <TextBlock Text="{Binding Category}"
+                                                                           FontSize="10"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Foreground="{DynamicResource TextDim}" />
+                                                            </StackPanel>
+                                                            <Button Grid.Column="1"
+                                                                    Classes="ghost"
+                                                                    Content="Ouvrir"
+                                                                    Click="OnOpenLocalProjectClick" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                    </DockPanel>
+                                </Border>
+                            </StackPanel>
 
                             <Grid>
                                 <Border Classes="card"

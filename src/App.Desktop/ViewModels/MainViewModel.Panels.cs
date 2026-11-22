@@ -12,6 +12,12 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace App.Desktop.ViewModels;
 
+public sealed record LocalProjectItem(
+    string Name,
+    string Category,
+    string FullPath,
+    bool IsGitRepo);
+
 // Panneaux « Contrôle de code source » (état), « Exécuter et déboguer » et « Extensions ».
 public partial class MainWindowViewModel
 {
@@ -63,6 +69,8 @@ public partial class MainWindowViewModel
                 Log("Dépôt auto : " + ex.Message);
             }
         }
+
+        DiscoverLocalProjects();
     }
 
     // =====================================================================
@@ -75,33 +83,31 @@ public partial class MainWindowViewModel
     private bool _isRightPanelVisible = true;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsRightBothMode))]
     [NotifyPropertyChangedFor(nameof(IsRightAiOnlyMode))]
     [NotifyPropertyChangedFor(nameof(IsRightGitOnlyMode))]
     [NotifyPropertyChangedFor(nameof(IsRightAiVisible))]
     [NotifyPropertyChangedFor(nameof(IsRightGitVisible))]
     [NotifyPropertyChangedFor(nameof(IsRightAiHighlighted))]
     [NotifyPropertyChangedFor(nameof(IsRightGitHighlighted))]
-    private int _rightPanelTab;
+    private int _rightPanelTab = 1;
 
-    public bool IsRightBothMode => RightPanelTab == 0;
-    public bool IsRightAiOnlyMode => RightPanelTab == 1;
+    public bool IsRightAiOnlyMode => RightPanelTab != 2;
     public bool IsRightGitOnlyMode => RightPanelTab == 2;
-    public bool IsRightAiVisible => RightPanelTab is 0 or 1;
-    public bool IsRightGitVisible => RightPanelTab is 0 or 2;
+    public bool IsRightAiVisible => RightPanelTab != 2;
+    public bool IsRightGitVisible => RightPanelTab == 2;
     public bool IsRightAiHighlighted => IsRightPanelVisible && IsRightAiVisible;
     public bool IsRightGitHighlighted => IsRightPanelVisible && IsRightGitVisible;
 
     [RelayCommand]
     private void SetRightPanelTab(string? tab)
     {
-        if (!int.TryParse(tab, out int mode) || mode is < 0 or > 2)
+        if (!int.TryParse(tab, out int mode) || mode is not (1 or 2))
             return;
 
         RightPanelTab = mode;
         IsRightPanelVisible = true;
 
-        if (mode is 0 or 2)
+        if (mode == 2)
             _ = Git.RefreshCommand.ExecuteAsync(null);
     }
 
@@ -148,14 +154,159 @@ public partial class MainWindowViewModel
     [ObservableProperty] private int _unstagedCount;
 
     public ObservableCollection<GitHubPullRequest> PullRequests { get; } = new();
+    public ObservableCollection<LocalProjectItem> LocalProjects { get; } = new();
+    [ObservableProperty] private bool _isProjectsListVisible;
+    [ObservableProperty] private string _projectsSummary = "Autres projets sur ce PC";
     [ObservableProperty] private string _gitHubOwner = "floflowilwil-cpu";
     [ObservableProperty] private string _gitHubRepo = "Keyce-code";
     [ObservableProperty] private string _newPrTitle = "";
     [ObservableProperty] private string _newPrBase = "main";
-    [ObservableProperty] private string _gitHubStatus = "Cliquez sur « Charger les PRs GitHub » pour voir les Pull Requests.";
+    [ObservableProperty] private string _gitHubStatus = "PRs GitHub en ligne (nécessite Internet vers github.com).";
 
     public string? DetectedGitRepoPath { get; } = FindGitRoot(Environment.CurrentDirectory);
     public bool HasDetectedGitRepo => DetectedGitRepoPath is not null;
+
+    [RelayCommand]
+    private void ToggleProjectsList()
+    {
+        DiscoverLocalProjects();
+        IsProjectsListVisible = !IsProjectsListVisible;
+    }
+
+    [RelayCommand]
+    private async Task OpenLocalProject(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+            return;
+
+        IsProjectsListVisible = false;
+        await OpenWorkspaceAsync(path);
+        DiscoverLocalProjects();
+    }
+
+    private void DiscoverLocalProjects()
+    {
+        string? anchorPath = _s.Workspace.Current?.RootPath ?? DetectedGitRepoPath ?? Environment.CurrentDirectory;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var discovered = new List<LocalProjectItem>();
+
+        if (!string.IsNullOrWhiteSpace(anchorPath))
+            seen.Add(Path.GetFullPath(anchorPath));
+
+        var searchRoots = new List<(string Path, int Depth)>();
+        if (!string.IsNullOrWhiteSpace(anchorPath))
+        {
+            DirectoryInfo? parent = Directory.GetParent(anchorPath);
+            if (parent is not null)
+            {
+                searchRoots.Add((parent.FullName, 1));
+                if (parent.Parent is { } grandParent)
+                    searchRoots.Add((grandParent.FullName, 2));
+            }
+        }
+
+        string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrWhiteSpace(userProfile))
+        {
+            searchRoots.Add((Path.Combine(userProfile, "source", "repos"), 1));
+            searchRoots.Add((Path.Combine(userProfile, "Projects"), 1));
+        }
+
+        foreach ((string root, int maxDepth) in searchRoots)
+        {
+            ScanProjectDirectory(root, maxDepth, seen, discovered);
+            if (discovered.Count >= 30)
+                break;
+        }
+
+        LocalProjects.Clear();
+        foreach (LocalProjectItem item in discovered
+                     .OrderByDescending(p => p.IsGitRepo)
+                     .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            LocalProjects.Add(item);
+        }
+
+        ProjectsSummary = LocalProjects.Count == 0
+            ? "Aucun autre projet détecté automatiquement. Utilisez « Ouvrir un autre projet... »."
+            : $"{LocalProjects.Count} autre(s) projet(s) trouvé(s) sur ce PC :";
+    }
+
+    private static void ScanProjectDirectory(
+        string rootPath,
+        int remainingDepth,
+        HashSet<string> seen,
+        List<LocalProjectItem> results)
+    {
+        if (remainingDepth <= 0 || results.Count >= 30 || !Directory.Exists(rootPath))
+            return;
+
+        string[] subDirs;
+        try
+        {
+            subDirs = System.IO.Directory.GetDirectories(rootPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        string parentName = Path.GetFileName(rootPath);
+        foreach (string dir in subDirs)
+        {
+            if (results.Count >= 30)
+                return;
+
+            string fullPath = Path.GetFullPath(dir);
+            string name = Path.GetFileName(fullPath);
+            if (name.StartsWith('.') || Ignored.Contains(name))
+                continue;
+
+            bool isGit = Directory.Exists(Path.Combine(fullPath, ".git"));
+            bool looksLikeProject = isGit || LooksLikeCodeProject(fullPath);
+
+            if (looksLikeProject || remainingDepth == 1)
+            {
+                if (seen.Add(fullPath))
+                {
+                    string tag = isGit ? $"{parentName} • Dépôt Git" : parentName;
+                    results.Add(new LocalProjectItem(name, tag, fullPath, isGit));
+                }
+
+                continue;
+            }
+
+            ScanProjectDirectory(fullPath, remainingDepth - 1, seen, results);
+        }
+    }
+
+    private static bool LooksLikeCodeProject(string dirPath)
+    {
+        try
+        {
+            foreach (string file in System.IO.Directory.EnumerateFiles(dirPath))
+            {
+                string ext = Path.GetExtension(file);
+                string fileName = Path.GetFileName(file);
+                if (ext.Equals(".sln", StringComparison.OrdinalIgnoreCase)
+                    || ext.Equals(".slnx", StringComparison.OrdinalIgnoreCase)
+                    || ext.Equals(".csproj", StringComparison.OrdinalIgnoreCase)
+                    || fileName.Equals("package.json", StringComparison.OrdinalIgnoreCase)
+                    || fileName.Equals("pom.xml", StringComparison.OrdinalIgnoreCase)
+                    || fileName.Equals("Cargo.toml", StringComparison.OrdinalIgnoreCase)
+                    || fileName.Equals("pyproject.toml", StringComparison.OrdinalIgnoreCase)
+                    || fileName.Equals("requirements.txt", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+
+        return false;
+    }
 
     private void UpdateGitCounts()
     {
@@ -168,7 +319,8 @@ public partial class MainWindowViewModel
         string? msg = Git.Controller.ErrorMessage;
         WorkspaceInfo? ws = _s.Workspace.Current;
         bool hasWs = ws is not null;
-        bool noGitRoot = ws is not null && FindGitRoot(ws.RootPath) is null;
+        string? gitRoot = ws is not null ? FindGitRoot(ws.RootPath) : null;
+        bool noGitRoot = hasWs && gitRoot is null;
         bool missing = noGitRoot
             || (!string.IsNullOrEmpty(msg)
                 && (msg.Contains("not a git repository", StringComparison.OrdinalIgnoreCase)
@@ -177,6 +329,72 @@ public partial class MainWindowViewModel
         IsGitRepoMissing = missing;
         HasGitError = hasWs && !missing && !string.IsNullOrEmpty(msg);
         GitMessage = missing ? "Ce dossier n'est pas un dépôt Git." : msg ?? "";
+
+        if (gitRoot is not null)
+            SyncGitHubRepoFromGitConfig(gitRoot);
+    }
+
+    private void SyncGitHubRepoFromGitConfig(string gitRoot)
+    {
+        string configPath = Path.Combine(gitRoot, ".git", "config");
+        if (!File.Exists(configPath))
+            return;
+
+        try
+        {
+            string[] lines = File.ReadAllLines(configPath);
+            bool inOrigin = false;
+            foreach (string rawLine in lines)
+            {
+                string line = rawLine.Trim();
+                if (line.StartsWith('['))
+                {
+                    inOrigin = line.Equals("[remote \"origin\"]", StringComparison.OrdinalIgnoreCase);
+                    continue;
+                }
+
+                if (!inOrigin || !line.StartsWith("url", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                int eq = line.IndexOf('=');
+                if (eq < 0)
+                    continue;
+
+                string url = line[(eq + 1)..].Trim();
+                if (TryParseGitHubRemote(url, out string owner, out string repo))
+                {
+                    GitHubOwner = owner;
+                    GitHubRepo = repo;
+                }
+
+                break;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private static bool TryParseGitHubRemote(string url, out string owner, out string repo)
+    {
+        owner = "";
+        repo = "";
+        const string githubHost = "github.com";
+        int idx = url.IndexOf(githubHost, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0)
+            return false;
+
+        string tail = url[(idx + githubHost.Length)..].TrimStart(':', '/');
+        if (tail.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+            tail = tail[..^4];
+
+        string[] parts = tail.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2)
+            return false;
+
+        owner = parts[0];
+        repo = parts[1];
+        return owner.Length > 0 && repo.Length > 0;
     }
 
     private static string? FindGitRoot(string? startPath)
@@ -265,8 +483,9 @@ public partial class MainWindowViewModel
         }
         catch (Exception ex)
         {
-            GitHubStatus = "Erreur GitHub : " + ex.Message;
-            ReportErrorMessage(ex);
+            GitHubStatus = FormatGitHubErrorMessage(ex);
+            StatusMessage = GitHubStatus;
+            Log("[GitHub] " + ex.Message);
         }
     }
 
@@ -312,10 +531,23 @@ public partial class MainWindowViewModel
         }
         catch (Exception ex)
         {
-            GitHubStatus = "Erreur PR GitHub : " + ex.Message;
-            ReportErrorMessage(ex);
+            GitHubStatus = FormatGitHubErrorMessage(ex);
+            StatusMessage = GitHubStatus;
+            Log("[GitHub] " + ex.Message);
             ShowOutput();
         }
+    }
+
+    private static string FormatGitHubErrorMessage(Exception ex)
+    {
+        if (ex.Message.Contains("Hôte inconnu", StringComparison.OrdinalIgnoreCase)
+            || ex.Message.Contains("No such host", StringComparison.OrdinalIgnoreCase)
+            || ex.Message.Contains("api.github.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return "GitHub en ligne inaccessible (hors-ligne ou DNS). Pour ouvrir un autre projet sur ce PC, cliquez sur « Ouvrir un autre projet... » ou « Mes projets sur ce PC ».";
+        }
+
+        return "Erreur GitHub : " + ex.Message;
     }
 
     private void ReportErrorMessage(Exception ex)
