@@ -53,6 +53,12 @@ public sealed partial class LanguageClient : ILanguageClient, IDisposable
     /// <summary>Un serveur existe-t-il pour ce langage ?</summary>
     public static bool SupportsLanguage(string languageId) => Servers.ContainsKey(languageId);
 
+
+        /// <summary>Capacités déclarées au serveur : notre client sait recevoir des diagnostics.</summary>
+    private static Lsp.ClientCapabilities CreateCapabilities()
+        => JObject.Parse("""{"textDocument":{"publishDiagnostics":{"relatedInformation":true}}}""")
+            .ToObject<Lsp.ClientCapabilities>()!;
+
     // ---------- Contrat ILanguageClient ----------
 
     public async Task StartServerAsync(string languageId, string workspaceRoot, CancellationToken ct = default)
@@ -84,7 +90,7 @@ public sealed partial class LanguageClient : ILanguageClient, IDisposable
                {
                   ProcessId = Environment.ProcessId,
                   RootUri = new Uri(root),
-                  Capabilities = new Lsp.ClientCapabilities()
+                  Capabilities = CreateCapabilities()
                 };
 
                 var init = await InvokeAsync<JToken?>(server.Rpc!, "initialize", initParams, InitializeTimeout, ct);
