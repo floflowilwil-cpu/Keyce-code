@@ -99,7 +99,11 @@ public sealed class ExecutionService : IExecutionService
             CreateNoWindow = true
         };
 
-        if (options.Arguments is not null)
+        if (options.RawArguments is not null)
+        {
+            startInfo.Arguments = options.RawArguments;
+        }
+        else if (options.Arguments is not null)
         {
             foreach (string argument in options.Arguments)
             {

@@ -31,6 +31,23 @@ Le débogage repose sur le **Debug Adapter Protocol (DAP)** : un adaptateur par 
 
 La variable d'environnement `KEYCE_DEBUGGER_<LANGAGE>` (`CSHARP`, `PYTHON`, `GO`, `NATIVE`) permet d'indiquer le chemin exact de l'outil. Pour ajouter un langage, créer une `DebugAdapterDefinition` et l'ajouter au registre.
 
+## Tâches (Terminal > Exécuter une tâche…)
+
+Ouvrez un dossier, puis **Terminal > Exécuter une tâche…** : la sortie s'affiche dans l'onglet *Sortie*. Les tâches viennent de :
+
+1. `.keyce/tasks.json` (créé via **Terminal > Configurer les tâches…**) ;
+2. `.vscode/tasks.json` (champs `label`, `command`, `args`, `options.cwd`, `options.env`) ;
+3. la détection automatique : `dotnet` (build / test / restore / clean), scripts `npm`, `cargo` et `go`.
+
+```json
+{
+  "version": "1.0",
+  "tasks": [
+    { "label": "Build", "command": "dotnet build", "args": ["-c", "Release"], "cwd": "${workspaceFolder}", "env": { "MA_VAR": "1" } }
+  ]
+}
+```
+
 ## Architecture
 
 L'interface ne gère pas directement Git, les processus ou l'analyse des langages : elle appelle des services internes via des contrats stables.
