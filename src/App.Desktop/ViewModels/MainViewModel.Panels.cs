@@ -35,7 +35,7 @@ public partial class MainWindowViewModel
         });
     }
 
-    /// <summary>À appeler une fois au démarrage (charge les extensions installées).</summary>
+    /// <summary>À appeler une fois au démarrage (charge les extensions installées et ouvre le dépôt Git courant).</summary>
     public async Task InitializeAsync()
     {
         try
@@ -49,6 +49,91 @@ public partial class MainWindowViewModel
         }
 
         await RefreshExtensionsAsync(updateSummary: true);
+
+        if (!HasFolder
+            && !string.IsNullOrWhiteSpace(DetectedGitRepoPath)
+            && Directory.Exists(DetectedGitRepoPath))
+        {
+            try
+            {
+                await OpenWorkspaceAsync(DetectedGitRepoPath);
+            }
+            catch (Exception ex)
+            {
+                Log("Dépôt auto : " + ex.Message);
+            }
+        }
+    }
+
+    // =====================================================================
+    //  Panneau latéral droit : Assistant IA & Git directement visibles
+    // =====================================================================
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRightAiHighlighted))]
+    [NotifyPropertyChangedFor(nameof(IsRightGitHighlighted))]
+    private bool _isRightPanelVisible = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRightBothMode))]
+    [NotifyPropertyChangedFor(nameof(IsRightAiOnlyMode))]
+    [NotifyPropertyChangedFor(nameof(IsRightGitOnlyMode))]
+    [NotifyPropertyChangedFor(nameof(IsRightAiVisible))]
+    [NotifyPropertyChangedFor(nameof(IsRightGitVisible))]
+    [NotifyPropertyChangedFor(nameof(IsRightAiHighlighted))]
+    [NotifyPropertyChangedFor(nameof(IsRightGitHighlighted))]
+    private int _rightPanelTab;
+
+    public bool IsRightBothMode => RightPanelTab == 0;
+    public bool IsRightAiOnlyMode => RightPanelTab == 1;
+    public bool IsRightGitOnlyMode => RightPanelTab == 2;
+    public bool IsRightAiVisible => RightPanelTab is 0 or 1;
+    public bool IsRightGitVisible => RightPanelTab is 0 or 2;
+    public bool IsRightAiHighlighted => IsRightPanelVisible && IsRightAiVisible;
+    public bool IsRightGitHighlighted => IsRightPanelVisible && IsRightGitVisible;
+
+    [RelayCommand]
+    private void SetRightPanelTab(string? tab)
+    {
+        if (!int.TryParse(tab, out int mode) || mode is < 0 or > 2)
+            return;
+
+        RightPanelTab = mode;
+        IsRightPanelVisible = true;
+
+        if (mode is 0 or 2)
+            _ = Git.RefreshCommand.ExecuteAsync(null);
+    }
+
+    [RelayCommand]
+    private void ToggleRightPanel() =>
+        IsRightPanelVisible = !IsRightPanelVisible;
+
+    [RelayCommand]
+    private void FocusRightAi()
+    {
+        if (IsRightPanelVisible && RightPanelTab == 1)
+        {
+            IsRightPanelVisible = false;
+            return;
+        }
+
+        RightPanelTab = 1;
+        IsRightPanelVisible = true;
+    }
+
+    [RelayCommand]
+    private void FocusRightGit()
+    {
+        if (IsRightPanelVisible && RightPanelTab == 2)
+        {
+            IsRightPanelVisible = false;
+            return;
+        }
+
+        RightPanelTab = 2;
+        IsRightPanelVisible = true;
+        _ = Git.RefreshCommand.ExecuteAsync(null);
     }
 
     // =====================================================================
@@ -62,6 +147,16 @@ public partial class MainWindowViewModel
     [ObservableProperty] private int _stagedCount;
     [ObservableProperty] private int _unstagedCount;
 
+    public ObservableCollection<GitHubPullRequest> PullRequests { get; } = new();
+    [ObservableProperty] private string _gitHubOwner = "floflowilwil-cpu";
+    [ObservableProperty] private string _gitHubRepo = "Keyce-code";
+    [ObservableProperty] private string _newPrTitle = "";
+    [ObservableProperty] private string _newPrBase = "main";
+    [ObservableProperty] private string _gitHubStatus = "Cliquez sur « Charger les PRs GitHub » pour voir les Pull Requests.";
+
+    public string? DetectedGitRepoPath { get; } = FindGitRoot(Environment.CurrentDirectory);
+    public bool HasDetectedGitRepo => DetectedGitRepoPath is not null;
+
     private void UpdateGitCounts()
     {
         StagedCount = Git.Controller.StagedFiles.Count;
@@ -71,10 +166,46 @@ public partial class MainWindowViewModel
     private void UpdateGitState()
     {
         string? msg = Git.Controller.ErrorMessage;
-        bool missing = msg?.Contains("not a git repository", StringComparison.OrdinalIgnoreCase) == true;
+        WorkspaceInfo? ws = _s.Workspace.Current;
+        bool hasWs = ws is not null;
+        bool noGitRoot = ws is not null && FindGitRoot(ws.RootPath) is null;
+        bool missing = noGitRoot
+            || (!string.IsNullOrEmpty(msg)
+                && (msg.Contains("not a git repository", StringComparison.OrdinalIgnoreCase)
+                    || msg.Contains("pas un dépôt git", StringComparison.OrdinalIgnoreCase)));
+
         IsGitRepoMissing = missing;
-        HasGitError = !missing && !string.IsNullOrEmpty(msg);
+        HasGitError = hasWs && !missing && !string.IsNullOrEmpty(msg);
         GitMessage = missing ? "Ce dossier n'est pas un dépôt Git." : msg ?? "";
+    }
+
+    private static string? FindGitRoot(string? startPath)
+    {
+        if (string.IsNullOrWhiteSpace(startPath))
+            return null;
+
+        try
+        {
+            var dir = new DirectoryInfo(startPath);
+            while (dir is not null)
+            {
+                if (Directory.Exists(Path.Combine(dir.FullName, ".git")))
+                    return dir.FullName;
+                dir = dir.Parent;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+
+        return null;
+    }
+
+    [RelayCommand]
+    private async Task OpenDetectedGitRepo()
+    {
+        if (!string.IsNullOrWhiteSpace(DetectedGitRepoPath) && Directory.Exists(DetectedGitRepoPath))
+            await OpenWorkspaceAsync(DetectedGitRepoPath);
     }
 
     [RelayCommand]
@@ -86,7 +217,111 @@ public partial class MainWindowViewModel
             Log("Dépôt Git initialisé");
             await Git.RefreshCommand.ExecuteAsync(null);
         }
-        catch (AppException ex) { ReportError(ex); }
+        catch (Exception ex) { ReportErrorMessage(ex); }
+    }
+
+    [RelayCommand]
+    private async Task ViewFullDiff()
+    {
+        await Git.LoadDiffCommand.ExecuteAsync(null);
+        string diff = Git.Controller.CurrentDiff;
+        if (string.IsNullOrWhiteSpace(diff))
+        {
+            StatusMessage = "Aucune différence Git par rapport au dernier commit.";
+            Log(StatusMessage);
+            return;
+        }
+
+        Log($"Diff Git complet :\n{diff}");
+        ShowOutput();
+        StatusMessage = "Diff Git affiché dans l'onglet Sortie.";
+    }
+
+    [RelayCommand]
+    private async Task LoadGitHubPullRequests()
+    {
+        string owner = GitHubOwner.Trim();
+        string repo = GitHubRepo.Trim();
+        if (owner.Length == 0 || repo.Length == 0)
+        {
+            GitHubStatus = "Indiquez Owner et Dépôt GitHub.";
+            return;
+        }
+
+        try
+        {
+            GitHubStatus = $"Chargement des PRs de {owner}/{repo}…";
+            IReadOnlyList<GitHubPullRequest> prs =
+                await _s.GitHub.GetPullRequestsAsync(owner, repo, "open");
+            PullRequests.Clear();
+            foreach (GitHubPullRequest pr in prs)
+                PullRequests.Add(pr);
+
+            GitHubStatus = prs.Count == 0
+                ? $"Aucune Pull Request ouverte sur {owner}/{repo}."
+                : $"{prs.Count} Pull Request(s) ouverte(s) sur {owner}/{repo}.";
+            StatusMessage = GitHubStatus;
+            Log($"[GitHub] {GitHubStatus}");
+        }
+        catch (Exception ex)
+        {
+            GitHubStatus = "Erreur GitHub : " + ex.Message;
+            ReportErrorMessage(ex);
+        }
+    }
+
+    [RelayCommand]
+    private async Task CreateGitHubPullRequest()
+    {
+        string owner = GitHubOwner.Trim();
+        string repo = GitHubRepo.Trim();
+        string title = NewPrTitle.Trim();
+        string head = Git.Controller.CurrentBranch.Trim();
+        string baseBranch = string.IsNullOrWhiteSpace(NewPrBase) ? "main" : NewPrBase.Trim();
+
+        if (owner.Length == 0 || repo.Length == 0 || title.Length == 0)
+        {
+            GitHubStatus = "Indiquez Owner, Dépôt et Titre de la PR.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(head))
+        {
+            GitHubStatus = "Ouvrez d'abord un dépôt Git pour connaître la branche source.";
+            return;
+        }
+
+        try
+        {
+            GitHubStatus = $"Création de la PR ({head} → {baseBranch})…";
+            GitHubPullRequest created = await _s.GitHub.CreatePullRequestAsync(
+                new CreatePullRequestOptions(
+                    owner,
+                    repo,
+                    title,
+                    head,
+                    baseBranch,
+                    "Créée depuis Keyce Code."));
+
+            NewPrTitle = "";
+            GitHubStatus = $"✓ PR #{created.Number} créée : {created.HtmlUrl}";
+            StatusMessage = GitHubStatus;
+            Log($"[GitHub] {GitHubStatus}");
+            ShowOutput();
+            await LoadGitHubPullRequests();
+        }
+        catch (Exception ex)
+        {
+            GitHubStatus = "Erreur PR GitHub : " + ex.Message;
+            ReportErrorMessage(ex);
+            ShowOutput();
+        }
+    }
+
+    private void ReportErrorMessage(Exception ex)
+    {
+        StatusMessage = ex.Message;
+        Log("Erreur : " + ex.Message);
     }
 
     // =====================================================================

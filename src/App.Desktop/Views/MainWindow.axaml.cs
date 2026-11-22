@@ -22,7 +22,8 @@ namespace App.Desktop.Views;
 
 public partial class MainWindow : Window
 {
-    private double _sidebarWidth = 260;
+    private double _sidebarWidth = 240;
+    private double _rightPanelWidth = 350;
     private double _bottomHeight = 200;
     private MainWindowViewModel? _vm;
 
@@ -77,6 +78,9 @@ public partial class MainWindow : Window
 
         vm.TerminalService.OutputBytesReceived +=
             OnTerminalOutputBytesReceived;
+
+        ApplyRightPanelVisibility(vm);
+        ApplyRightPanelTab(vm);
     }
 
     private void DetachViewModel(MainWindowViewModel vm)
@@ -274,6 +278,65 @@ public partial class MainWindow : Window
                 rows[3].MinHeight = 0;
                 rows[3].Height = new GridLength(0);
             }
+        }
+        else if (e.PropertyName ==
+                 nameof(MainWindowViewModel.IsRightPanelVisible))
+        {
+            ApplyRightPanelVisibility(vm);
+        }
+        else if (e.PropertyName ==
+                 nameof(MainWindowViewModel.RightPanelTab))
+        {
+            ApplyRightPanelTab(vm);
+        }
+    }
+
+    private void ApplyRightPanelVisibility(MainWindowViewModel vm)
+    {
+        var columns = RootGrid.ColumnDefinitions;
+        if (columns.Count < 6)
+            return;
+
+        if (vm.IsRightPanelVisible)
+        {
+            columns[4].Width = new GridLength(4);
+            columns[5].MinWidth = 240;
+            columns[5].Width = new GridLength(_rightPanelWidth);
+        }
+        else
+        {
+            if (columns[5].ActualWidth > 0)
+                _rightPanelWidth = columns[5].ActualWidth;
+
+            columns[4].Width = new GridLength(0);
+            columns[5].MinWidth = 0;
+            columns[5].Width = new GridLength(0);
+        }
+    }
+
+    private void ApplyRightPanelTab(MainWindowViewModel vm)
+    {
+        var rows = RightContentGrid.RowDefinitions;
+        if (rows.Count < 3)
+            return;
+
+        switch (vm.RightPanelTab)
+        {
+            case 1:
+                rows[0].Height = new GridLength(1, GridUnitType.Star);
+                rows[1].Height = new GridLength(0);
+                rows[2].Height = new GridLength(0);
+                break;
+            case 2:
+                rows[0].Height = new GridLength(0);
+                rows[1].Height = new GridLength(0);
+                rows[2].Height = new GridLength(1, GridUnitType.Star);
+                break;
+            default:
+                rows[0].Height = new GridLength(43, GridUnitType.Star);
+                rows[1].Height = new GridLength(4);
+                rows[2].Height = new GridLength(57, GridUnitType.Star);
+                break;
         }
     }
 
