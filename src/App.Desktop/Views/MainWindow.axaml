@@ -589,6 +589,8 @@
                                         <Separator />
                                         <MenuItem Header="Actualiser"
                                                   Click="OnRefreshExplorer" />
+                                        <MenuItem Header="Renommer...  (F2)"
+                                                  Click="OnRenameSelected" />
                                         <MenuItem Header="Supprimer"
                                                   Click="OnDeleteSelected" />
                                     </ContextMenu>

@@ -17,6 +17,14 @@ internal sealed class EncodedFakeFileService : IEncodedFileService
     public Task<FileContent> ReadWithEncodingAsync(string path, CancellationToken ct = default) =>
         Files.TryGetValue(path, out var c) ? Task.FromResult(c) : throw new AppException(ErrorCode.NotFound, path);
 
+    /// <summary>Texte que « relire avec cet encodage » doit produire, par (chemin, nom d'encodage).</summary>
+    public Dictionary<(string Path, string Encoding), string> AsEncoding { get; } = new();
+
+    public Task<FileContent> ReadAsEncodingAsync(string path, FileEncoding encoding, CancellationToken ct = default) =>
+        AsEncoding.TryGetValue((path, encoding.Name), out var text)
+            ? Task.FromResult(new FileContent(text, encoding))
+            : throw new AppException(ErrorCode.NotFound, path);
+
     public Task WriteAsync(string path, string content, CancellationToken ct = default)
     {
         PlainWrites++;

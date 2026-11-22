@@ -24,6 +24,7 @@ public sealed class Document
     private readonly List<UndoGroup> _undo = new();
     private readonly List<UndoGroup> _redo = new();
     private int _savedDepth;
+    private LineEnding _savedLineEnding;
     private bool _breakCoalescing;
 
     public Document(DocumentId id, string? path, string text, TimeProvider? time = null)
@@ -32,6 +33,7 @@ public sealed class Document
         Path = path;
         LanguageId = LanguageIds.FromPath(path);
         LineEnding = LineEndingDetector.Detect(text);
+        _savedLineEnding = LineEnding;
         Text = new TextModel(text);
         DiskText = TextModel.NormalizeNewLines(text);
         _time = time ?? TimeProvider.System;
@@ -45,9 +47,21 @@ public sealed class Document
 
     /// <summary>Encodage du fichier (détecté à l'ouverture, conservé à l'enregistrement).</summary>
     public FileEncoding Encoding { get; set; } = FileEncoding.Utf8;
+
+    /// <summary>Vrai après « Rouvrir avec l'encodage » : les relectures du disque n'utilisent plus la détection automatique.</summary>
+    public bool EncodingForced { get; set; }
+
+    private bool _isMoving;
+
+    /// <summary>Vrai pendant un renommage du fichier : les événements du disque pour l'ancien chemin sont ignorés.</summary>
+    public bool IsMoving
+    {
+        get => Volatile.Read(ref _isMoving);
+        set => Volatile.Write(ref _isMoving, value);
+    }
     public TextModel Text { get; }
     public int Version { get; private set; }
-    public bool IsDirty => _savedDepth != _undo.Count;
+    public bool IsDirty => _savedDepth != _undo.Count || LineEnding != _savedLineEnding;
 
     /// <summary>
     /// Dernier contenu connu du fichier sur le disque (fins de ligne normalisées en \n) :
@@ -89,6 +103,7 @@ public sealed class Document
     public void MarkSaved()
     {
         _savedDepth = _undo.Count;
+        _savedLineEnding = LineEnding;
         _breakCoalescing = true;
     }
 
@@ -112,6 +127,7 @@ public sealed class Document
         }
 
         LineEnding = LineEndingDetector.Detect(rawDiskText);
+        _savedLineEnding = LineEnding;
         DiskText = normalized;
         ConflictDiskText = null;
         _undo.Clear();

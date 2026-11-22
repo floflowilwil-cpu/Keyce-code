@@ -473,6 +473,49 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>Renomme un fichier ou un dossier. Les onglets ouverts suivent (historique et modifications conservés).</summary>
+    public async Task RenameNodeAsync(FileNode node, string newName)
+    {
+        string? error = ValidateName(newName);
+
+        if (error is not null)
+        {
+            StatusMessage = error;
+            Log(error);
+            return;
+        }
+
+        newName = newName.Trim();
+
+        if (string.Equals(newName, node.Name, StringComparison.Ordinal))
+            return;
+
+        string? parent = Path.GetDirectoryName(node.FullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+        if (parent is null)
+        {
+            StatusMessage = "Impossible de renommer cet élément.";
+            return;
+        }
+
+        string newPath = Path.Combine(parent, newName);
+
+        try
+        {
+            await _s.Editor.MovePathAsync(node.FullPath, newPath);
+
+            StatusMessage = $"Renommé : {node.Name} → {newName}";
+            Log(StatusMessage);
+
+            RefreshExplorer();
+            _ = Git.RefreshCommand.ExecuteAsync(null);
+        }
+        catch (AppException ex)
+        {
+            ReportError(ex);
+        }
+    }
+
     private static bool IsInside(string path, string root)
     {
         if (string.Equals(path, root, StringComparison.OrdinalIgnoreCase))
