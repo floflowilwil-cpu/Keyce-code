@@ -320,6 +320,27 @@ public sealed class CodeEditorControl : Control
         InvalidateVisual();
     }
 
+    /// <summary>
+    /// À appeler quand le curseur ou la sélection a été modifié depuis l'extérieur du contrôle
+    /// (rechercher / remplacer, « Aller à la ligne », clic sur un problème, arrêt du débogueur) :
+    /// fait défiler jusqu'à la sélection, la redessine et prévient la barre d'état.
+    /// </summary>
+    public void RevealCaret()
+    {
+        if (_editor is not null && _documentId is { } id && Bounds.Height > 0)
+        {
+            // Si la ligne est hors de l'écran, on la place au milieu plutôt qu'au bord.
+            double top = _editor.GetCaretSet(id).Primary.Position.Line * _lineHeight;
+            if (top < _scrollY || top + _lineHeight > _scrollY + Bounds.Height)
+                _scrollY = Math.Max(0, top - Bounds.Height / 2 + _lineHeight / 2);
+        }
+
+        ResetBlink();
+        EnsureCaretVisible();   // gère aussi le défilement horizontal
+        InvalidateVisual();
+        CaretChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     // ------------------------------------------------------------------ rendu
 
     public override void Render(DrawingContext context)

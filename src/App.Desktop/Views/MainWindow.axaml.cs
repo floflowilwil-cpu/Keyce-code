@@ -83,8 +83,9 @@ public partial class MainWindow : Window
     {
         vm.PropertyChanged += OnViewModelPropertyChanged;
         vm.ConflictDetected += OnConflictDetected;
+        vm.SelectionRequested += OnSelectionRequested;
 
-        CodeEditor.Attach(vm.EditorService, vm.EditorCommands);
+        CodeEditor.Attach(vm.EditorService, vm.EditorCommands, vm.SyntaxHighlighter);
         CodeEditor.DocumentId = vm.ActiveTab?.Id;
         CodeEditor.CaretChanged += OnEditorCaretChanged;
         CodeEditor.SaveRequested += OnEditorSaveRequested;
@@ -94,13 +95,13 @@ public partial class MainWindow : Window
             OnTerminalOutputBytesReceived;
 
         ApplyRightPanelVisibility(vm);
-        ApplyRightPanelTab(vm);
     }
 
     private void DetachViewModel(MainWindowViewModel vm)
     {
         vm.PropertyChanged -= OnViewModelPropertyChanged;
         vm.ConflictDetected -= OnConflictDetected;
+        vm.SelectionRequested -= OnSelectionRequested;
 
         CodeEditor.CaretChanged -= OnEditorCaretChanged;
         CodeEditor.SaveRequested -= OnEditorSaveRequested;
@@ -173,6 +174,20 @@ public partial class MainWindow : Window
         if (_vm is null) return;
         var caret = CodeEditor.CaretPosition;
         _vm.Position = $"Ln {caret.Line + 1}, Col {caret.Column + 1}";
+    }
+
+    // Le ViewModel a déplacé la sélection dans le moteur (recherche, aller à la ligne, problème…) :
+    // le contrôle ne le sait pas tant qu'on ne le lui dit pas.
+    // Cherche l'occurrence suivante / précédente PUIS demande au contrôle de défiler et de la surligner.
+    private void FindAndReveal(bool forward)
+    {
+        _vm?.FindNext(forward);
+        Dispatcher.UIThread.Post(CodeEditor.RevealCaret);
+    }
+
+    private void OnSelectionRequested(int anchor, int active)
+    {
+        Dispatcher.UIThread.Post(CodeEditor.RevealCaret);
     }
 
     private async void OnEditorSaveRequested(object? sender, EventArgs e)
@@ -298,11 +313,6 @@ public partial class MainWindow : Window
         {
             ApplyRightPanelVisibility(vm);
         }
-        else if (e.PropertyName ==
-                 nameof(MainWindowViewModel.RightPanelTab))
-        {
-            ApplyRightPanelTab(vm);
-        }
     }
 
     private void ApplyRightPanelVisibility(MainWindowViewModel vm)
@@ -328,32 +338,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ApplyRightPanelTab(MainWindowViewModel vm)
-    {
-        var rows = RightContentGrid.RowDefinitions;
-        if (rows.Count < 3)
-            return;
-
-        switch (vm.RightPanelTab)
-        {
-            case 1:
-                rows[0].Height = new GridLength(1, GridUnitType.Star);
-                rows[1].Height = new GridLength(0);
-                rows[2].Height = new GridLength(0);
-                break;
-            case 2:
-                rows[0].Height = new GridLength(0);
-                rows[1].Height = new GridLength(0);
-                rows[2].Height = new GridLength(1, GridUnitType.Star);
-                break;
-            default:
-                rows[0].Height = new GridLength(43, GridUnitType.Star);
-                rows[1].Height = new GridLength(4);
-                rows[2].Height = new GridLength(57, GridUnitType.Star);
-                break;
-        }
-    }
-
     // ================================================================
     // Raccourcis clavier
     // ================================================================
@@ -371,6 +355,24 @@ public partial class MainWindow : Window
 
         bool shift =
             e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+
+        // Annuler / rétablir : fonctionne aussi quand le focus n'est pas dans l'éditeur (explorateur, onglets,
+        // après un clic dans un menu). Quand l'éditeur a le focus, c'est lui qui traite la touche (curseur et
+        // défilement compris) ; dans une zone de texte (recherche, message de commit), elle garde son propre Ctrl+Z.
+        if (ctrl && (e.Key == Key.Z || e.Key == Key.Y) && _vm.HasFile)
+        {
+            var focused = FocusManager?.GetFocusedElement();
+            if (focused is not TextBox && !ReferenceEquals(focused, CodeEditor))
+            {
+                if (e.Key == Key.Y || shift)
+                    _vm.RedoCommand.Execute(null);
+                else
+                    _vm.UndoCommand.Execute(null);
+
+                e.Handled = true;
+                return;
+            }
+        }
 
         if (ctrl && e.Key == Key.F)
         {
@@ -414,8 +416,7 @@ public partial class MainWindow : Window
         }
         else if (e.Key == Key.F3 && _vm.HasFile)
         {
-            SyncSelection();
-            _vm.FindNext(!shift);
+            FindAndReveal(!shift);
             e.Handled = true;
         }
         else if (e.Key == Key.Escape && _vm.IsFindVisible)
@@ -444,6 +445,17 @@ public partial class MainWindow : Window
         {
             await _vm.OpenWorkspaceAsync(
                 folders[0].Path.LocalPath);
+        }
+    }
+
+    private void OnOpenLocalProjectClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: LocalProjectItem project } &&
+            _vm is not null)
+        {
+            _vm.OpenLocalProjectCommand.Execute(project.FullPath);
         }
     }
 
@@ -764,16 +776,14 @@ public partial class MainWindow : Window
         object? sender,
         RoutedEventArgs e)
     {
-        SyncSelection();
-        _vm?.FindNext(true);
+        FindAndReveal(true);
     }
 
     private void OnFindPrevClick(
         object? sender,
         RoutedEventArgs e)
     {
-        SyncSelection();
-        _vm?.FindNext(false);
+        FindAndReveal(false);
     }
 
     private void OnFindClose(
@@ -790,8 +800,7 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Enter)
         {
-            SyncSelection();
-            _vm?.FindNext(
+            FindAndReveal(
                 !e.KeyModifiers.HasFlag(KeyModifiers.Shift));
 
             e.Handled = true;

@@ -542,6 +542,15 @@
                                 </Button>
                             </Grid>
 
+                            <Button DockPanel.Dock="Top"
+                                    Content="Ouvrir un autre projet / dossier..."
+                                    Classes="secondary"
+                                    Margin="12,0,12,6"
+                                    Padding="8,5"
+                                    FontSize="11"
+                                    Click="OnOpenFolder"
+                                    IsVisible="{Binding HasFolder}" />
+
                             <StackPanel DockPanel.Dock="Top"
                                         Margin="16,16"
                                         Spacing="10"
@@ -655,6 +664,71 @@
                         <ScrollViewer IsVisible="{Binding IsRunActive}">
                             <StackPanel Margin="12,2,12,12" Spacing="10">
 
+                                <!-- Exécution simple, indépendante du débogueur -->
+                                <TextBlock Classes="section"
+                                           Text="EXÉCUTER UN PROGRAMME" />
+
+                                <TextBox Text="{Binding ExecutionExecutable}"
+                                         PlaceholderText="Programme : dotnet, python, node, monapp.exe…"
+                                         Padding="8,7"
+                                         IsEnabled="{Binding IsExecutionIdle}"
+                                         Background="{DynamicResource BgMain}"
+                                         Foreground="{DynamicResource TextMain}" />
+
+                                <TextBox Text="{Binding ExecutionArguments}"
+                                         PlaceholderText="Arguments : bin\Debug\net10.0\MonApp.dll --verbose"
+                                         Padding="8,7"
+                                         IsEnabled="{Binding IsExecutionIdle}"
+                                         Background="{DynamicResource BgMain}"
+                                         Foreground="{DynamicResource TextMain}" />
+
+                                <TextBox Text="{Binding ExecutionWorkingDirectory}"
+                                         PlaceholderText="Dossier de travail (facultatif)"
+                                         Padding="8,7"
+                                         IsEnabled="{Binding IsExecutionIdle}"
+                                         Background="{DynamicResource BgMain}"
+                                         Foreground="{DynamicResource TextMain}" />
+
+                                <TextBlock Text="ENCODAGE DE LA SORTIE"
+                                           Classes="section" />
+
+                                <ComboBox SelectedIndex="{Binding ExecutionOutputEncodingIndex}"
+                                          IsEnabled="{Binding IsExecutionIdle}"
+                                          HorizontalAlignment="Stretch">
+                                    <ComboBoxItem Content="UTF-8 (65001) — recommandé" />
+                                    <ComboBoxItem Content="CP850 — commandes Windows classiques" />
+                                </ComboBox>
+
+                                <Grid ColumnDefinitions="*,6,*">
+                                    <Button Grid.Column="0"
+                                            Content="▶ Exécuter"
+                                            Classes="primary"
+                                            Command="{Binding StartExecutionCommand}"
+                                            IsVisible="{Binding IsExecutionIdle}" />
+                                    <Button Grid.Column="2"
+                                            Content="■ Arrêter"
+                                            Classes="danger"
+                                            Command="{Binding StopExecutionCommand}"
+                                            IsVisible="{Binding IsExecuting}" />
+                                </Grid>
+
+                                <Border Classes="card"
+                                        BorderBrush="{DynamicResource Accent}"
+                                        BorderThickness="3,0,0,0">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Classes="section"
+                                                   Text="ÉTAT DE L'EXÉCUTION" />
+                                        <TextBlock Text="{Binding ExecutionStatus}"
+                                                   TextWrapping="Wrap"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextMain}" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Height="1"
+                                        Background="{DynamicResource Line}"
+                                        Margin="0,4" />
+
                                 <TextBlock Classes="section"
                                            Text="PROGRAMME À DÉBOGUER" />
 
@@ -738,7 +812,7 @@
                                             Command="{Binding ClearBreakpointsCommand}" />
                                 </Grid>
 
-                                <Button Content="●  Ajouter à la ligne du curseur"
+                                <Button Content="● Ajouter à la ligne du curseur"
                                         Classes="secondary"
                                         Click="OnAddBreakpoint" />
 
@@ -1031,11 +1105,6 @@
                                     Content="Git &amp; GitHub"
                                     Command="{Binding FocusRightGitCommand}"
                                     ToolTip.Tip="Afficher / masquer Git &amp; GitHub à droite" />
-                            <Button Classes="ghost"
-                                    Content="IA + Git"
-                                    Command="{Binding SetRightPanelTabCommand}"
-                                    CommandParameter="0"
-                                    ToolTip.Tip="Afficher l'Assistant IA et Git ensemble à droite" />
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -1322,18 +1391,8 @@
                             BorderBrush="{DynamicResource Line}"
                             BorderThickness="0,0,0,1"
                             Height="34">
-                        <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
+                        <Grid ColumnDefinitions="Auto,Auto,*,Auto">
                             <Grid Grid.Column="0">
-                                <Border Height="2"
-                                        VerticalAlignment="Bottom"
-                                        Background="{DynamicResource Accent}"
-                                        IsVisible="{Binding IsRightBothMode}" />
-                                <Button Classes="tab"
-                                        Content="IA + GIT"
-                                        Command="{Binding SetRightPanelTabCommand}"
-                                        CommandParameter="0" />
-                            </Grid>
-                            <Grid Grid.Column="1">
                                 <Border Height="2"
                                         VerticalAlignment="Bottom"
                                         Background="{DynamicResource Accent}"
@@ -1343,7 +1402,7 @@
                                         Command="{Binding SetRightPanelTabCommand}"
                                         CommandParameter="1" />
                             </Grid>
-                            <Grid Grid.Column="2">
+                            <Grid Grid.Column="1">
                                 <Border Height="2"
                                         VerticalAlignment="Bottom"
                                         Background="{DynamicResource Accent}"
@@ -1353,7 +1412,7 @@
                                         Command="{Binding SetRightPanelTabCommand}"
                                         CommandParameter="2" />
                             </Grid>
-                            <Button Grid.Column="4"
+                            <Button Grid.Column="3"
                                     Content="✕"
                                     Command="{Binding ToggleRightPanelCommand}"
                                     Background="Transparent"
@@ -1363,12 +1422,10 @@
                         </Grid>
                     </Border>
 
-                    <Grid x:Name="RightContentGrid"
-                          RowDefinitions="43*,4,57*">
+                    <Grid x:Name="RightContentGrid">
 
                         <!-- Section 1 : Assistant IA directement visible sur l'interface -->
-                        <DockPanel Grid.Row="0"
-                                   IsVisible="{Binding IsRightAiVisible}">
+                        <DockPanel IsVisible="{Binding IsRightAiVisible}">
                             <TextBlock DockPanel.Dock="Top"
                                        Classes="section"
                                        Text="ASSISTANT IA (CHAT &amp; CODE)"
@@ -1417,19 +1474,70 @@
                             </ScrollViewer>
                         </DockPanel>
 
-                        <GridSplitter Grid.Row="1"
-                                      ResizeDirection="Rows"
-                                      Background="{DynamicResource Line}"
-                                      HorizontalAlignment="Stretch"
-                                      IsVisible="{Binding IsRightBothMode}" />
-
                         <!-- Section 2 : Contrôle de code source (Git & GitHub) à droite de l'interface -->
-                        <DockPanel Grid.Row="2"
-                                   IsVisible="{Binding IsRightGitVisible}">
+                        <DockPanel IsVisible="{Binding IsRightGitVisible}">
                             <TextBlock DockPanel.Dock="Top"
                                        Classes="section"
                                        Text="CONTRÔLE DE CODE SOURCE (GIT &amp; GITHUB)"
                                        Margin="12,8,12,6" />
+
+                            <StackPanel DockPanel.Dock="Top"
+                                        Margin="12,0,12,6"
+                                        Spacing="6">
+                                <Grid ColumnDefinitions="*,6,*">
+                                    <Button Grid.Column="0"
+                                            Content="Ouvrir un autre projet..."
+                                            Classes="secondary"
+                                            FontSize="11"
+                                            Padding="6,5"
+                                            Click="OnOpenFolder" />
+                                    <Button Grid.Column="2"
+                                            Content="Mes projets sur ce PC"
+                                            Classes="secondary"
+                                            FontSize="11"
+                                            Padding="6,5"
+                                            Command="{Binding ToggleProjectsListCommand}" />
+                                </Grid>
+
+                                <Border Classes="card"
+                                        Padding="8"
+                                        MaxHeight="180"
+                                        IsVisible="{Binding IsProjectsListVisible}">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Top"
+                                                   Text="{Binding ProjectsSummary}"
+                                                   FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextAccent}"
+                                                   Margin="0,0,0,4" />
+                                        <ScrollViewer>
+                                            <ItemsControl ItemsSource="{Binding LocalProjects}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate DataType="vm:LocalProjectItem">
+                                                        <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                                                            <StackPanel Grid.Column="0">
+                                                                <TextBlock Text="{Binding Name}"
+                                                                           FontSize="12"
+                                                                           FontWeight="SemiBold"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Foreground="{DynamicResource TextMain}" />
+                                                                <TextBlock Text="{Binding Category}"
+                                                                           FontSize="10"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Foreground="{DynamicResource TextDim}" />
+                                                            </StackPanel>
+                                                            <Button Grid.Column="1"
+                                                                    Classes="ghost"
+                                                                    Content="Ouvrir"
+                                                                    Click="OnOpenLocalProjectClick" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                    </DockPanel>
+                                </Border>
+                            </StackPanel>
 
                             <Grid>
                                 <Border Classes="card"
@@ -1532,18 +1640,18 @@
                                                         IsEnabled="{Binding Git.Controller.CommitMessage,
                                                                     Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
-                                                <Grid ColumnDefinitions="*,6,*,6,*">
-                                                    <Button Grid.Column="0"
+                                                <Grid ColumnDefinitions="*,6,*" RowDefinitions="Auto,6,Auto">
+                                                    <Button Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
                                                             Classes="secondary"
                                                             Content="Tout indexer"
                                                             Command="{Binding Git.StageAllCommand}" />
-                                                    <Button Grid.Column="2"
+                                                    <Button Grid.Row="2" Grid.Column="0"
                                                             Classes="secondary"
-                                                            Content="Pull"
+                                                            Content="↓  Pull"
                                                             Command="{Binding Git.PullCommand}" />
-                                                    <Button Grid.Column="4"
+                                                    <Button Grid.Row="2" Grid.Column="2"
                                                             Classes="secondary"
-                                                            Content="Push"
+                                                            Content="↑  Push"
                                                             Command="{Binding Git.PushCommand}" />
                                                 </Grid>
 

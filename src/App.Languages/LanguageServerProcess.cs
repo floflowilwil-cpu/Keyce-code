@@ -44,6 +44,11 @@ public sealed class LanguageServerProcess : IDisposable
             new JsonMessageFormatter());
 
         Rpc = new JsonRpc(handler);
+        if (Environment.GetEnvironmentVariable("KEYCE_LSP_TRACE") == "1")
+        {
+            Rpc.TraceSource.Switch.Level = SourceLevels.All;
+            Rpc.TraceSource.Listeners.Add(new TextWriterTraceListener(Console.Out));
+        }
         if (localTarget is not null)
         Rpc.AddLocalRpcTarget(localTarget);
         Rpc.StartListening();

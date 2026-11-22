@@ -127,6 +127,7 @@ public partial class MainWindowViewModel : ObservableObject
     // Services exposés au contrôle d'édition natif de la fenêtre.
     public IEditorService EditorService => _s.Editor;
     public IEditorCommands EditorCommands => _s.EditorCommands;
+    public ISyntaxHighlighter SyntaxHighlighter => _s.Highlighter;
 
     partial void OnActiveTabChanged(
         DocumentTab? oldValue,
@@ -865,7 +866,7 @@ public partial class MainWindowViewModel : ObservableObject
     private SearchOptions Options =>
         new(MatchCase: MatchCase, UseRegex: UseRegex);
 
-    public void UpdateFindCount()
+    public void UpdateFindCount(TextRange? current = null)
     {
         if (ActiveTab is null || FindText.Length == 0)
         {
@@ -875,13 +876,26 @@ public partial class MainWindowViewModel : ObservableObject
 
         try
         {
-            int count = _s.EditorCommands
-                .FindAll(ActiveTab.Id, FindText, Options)
-                .Count;
+            var all = _s.EditorCommands
+                .FindAll(ActiveTab.Id, FindText, Options);
+
+            int count = all.Count;
+
+            // Numéro de l'occurrence courante (« 3 sur 19 »).
+            int index = 0;
+            if (current is { } c)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    if (all[i].Start == c.Start) { index = i + 1; break; }
+                }
+            }
 
             FindInfo = count == 0
                 ? "Aucun résultat"
-                : $"{count} résultat(s)";
+                : index > 0
+                    ? $"{index} sur {count}"
+                    : $"{count} résultat(s)";
         }
         catch (InvalidOperationException)
         {
@@ -914,7 +928,7 @@ public partial class MainWindowViewModel : ObservableObject
                 : _s.EditorCommands.FindPrevious(
                     id, FindText, range.Start, Options);
 
-            UpdateFindCount();
+            UpdateFindCount(hit);
 
             if (hit is null)
                 return;

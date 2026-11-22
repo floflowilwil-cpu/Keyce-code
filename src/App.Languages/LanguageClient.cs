@@ -15,16 +15,30 @@ public sealed partial class LanguageClient : ILanguageClient, IDisposable
     private static readonly TimeSpan InitializeTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
 
-    private static readonly Dictionary<string, (string Command, string Arguments)> Servers =
+             private static readonly Dictionary<string, (string Command, string Arguments)> Servers =
         new(StringComparer.OrdinalIgnoreCase)
         {
+            ["csharp"] = ("csharp-ls", ""),
             ["python"] = ("python", "-m pylsp"),
+            ["json"] = ("cmd.exe", "/c vscode-json-language-server --stdio"),
+            ["html"] = ("cmd.exe", "/c vscode-html-language-server --stdio"),
+            ["css"] = ("cmd.exe", "/c vscode-css-language-server --stdio"),
+            ["javascript"] = ("cmd.exe", "/c typescript-language-server --stdio"),
+            ["typescript"] = ("cmd.exe", "/c typescript-language-server --stdio"),
         };
 
     private static readonly Dictionary<string, string> Extensions =
         new(StringComparer.OrdinalIgnoreCase)
         {
+            [".cs"] = "csharp",
             [".py"] = "python",
+            [".json"] = "json",
+            [".html"] = "html",
+            [".htm"] = "html",
+            [".css"] = "css",
+            [".js"] = "javascript",
+            [".mjs"] = "javascript",
+            [".ts"] = "typescript",
         };
 
     private readonly ConcurrentDictionary<string, LanguageServerProcess> _servers = new(StringComparer.OrdinalIgnoreCase);
@@ -39,12 +53,18 @@ public sealed partial class LanguageClient : ILanguageClient, IDisposable
     public event EventHandler<string>? ServerDisconnected;
 
     /// <summary>Un serveur existe-t-il pour ce langage ?</summary>
-    public static bool SupportsLanguage(string languageId) => Servers.ContainsKey(languageId);
+   public static bool SupportsLanguage(string languageId) => Servers.ContainsKey(ServerKey(languageId));
+
+        /// <summary>Capacités déclarées au serveur : notre client sait recevoir des diagnostics.</summary>
+    private static Lsp.ClientCapabilities CreateCapabilities()
+        => JObject.Parse("""{"textDocument":{"publishDiagnostics":{"relatedInformation":true}}}""")
+            .ToObject<Lsp.ClientCapabilities>()!;
 
     // ---------- Contrat ILanguageClient ----------
 
     public async Task StartServerAsync(string languageId, string workspaceRoot, CancellationToken ct = default)
     {
+        languageId = ServerKey(languageId); 
         if (!Servers.TryGetValue(languageId, out var config))
             throw new AppException(ErrorCode.InvalidArgument,
                 $"Aucun serveur configuré pour le langage '{languageId}'.");
@@ -53,7 +73,6 @@ public sealed partial class LanguageClient : ILanguageClient, IDisposable
         try
         {
             if (_servers.ContainsKey(languageId)) return;   // déjà démarré et vivant
-
             var server = new LanguageServerProcess();
             try
             {
@@ -70,10 +89,10 @@ public sealed partial class LanguageClient : ILanguageClient, IDisposable
 
                 var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(workspaceRoot)) + Path.DirectorySeparatorChar;
                 var initParams = new Lsp.InitializeParams
-                {
-                    ProcessId = Environment.ProcessId,
-                    RootUri = new Uri(root),
-                    Capabilities = new Lsp.ClientCapabilities()
+               {
+                  ProcessId = Environment.ProcessId,
+                  RootUri = new Uri(root),
+                  Capabilities = CreateCapabilities()
                 };
 
                 var init = await InvokeAsync<JToken?>(server.Rpc!, "initialize", initParams, InitializeTimeout, ct);
@@ -204,9 +223,8 @@ public sealed partial class LanguageClient : ILanguageClient, IDisposable
 
         var incremental = !forceFullText
             && _openLanguages.TryGetValue(uri, out var languageId)
-            && _incrementalSync.TryGetValue(languageId, out var supported)
-            && supported;
-
+            && _incrementalSync.TryGetValue(ServerKey(languageId), out var supported)
+             && supported;
         var changes = incremental
             ? edits.Select(e => new Lsp.TextDocumentContentChangeEvent
               {
@@ -348,6 +366,7 @@ public sealed partial class LanguageClient : ILanguageClient, IDisposable
 
     private JsonRpc GetServerRpc(string languageId)
     {
+        languageId = ServerKey(languageId);
         if (_servers.TryGetValue(languageId, out var server) && server.Rpc is { } rpc)
             return rpc;
 

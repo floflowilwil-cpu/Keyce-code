@@ -1,5 +1,7 @@
+
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text;
 using App.Core.Contracts;
 using App.Core.Models;
 
@@ -32,6 +34,11 @@ public sealed class ExecutionService : IExecutionService
         ExecutionSessionId,
         ExecutionSession> _sessions = new();
 
+    static ExecutionService()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+    }
+
     public event EventHandler<ExecutionOutputEventArgs>? OutputReceived;
 
     public async Task<ExecutionSessionId> StartExecutionAsync(
@@ -46,6 +53,20 @@ public sealed class ExecutionService : IExecutionService
             throw new ArgumentException(
                 "The executable path is required.",
                 nameof(options));
+        }
+
+        Encoding outputEncoding;
+
+        try
+        {
+            outputEncoding = Encoding.GetEncoding(options.OutputCodePage);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new ArgumentException(
+                $"Unsupported output code page: {options.OutputCodePage}.",
+                nameof(options),
+                exception);
         }
 
         string workingDirectory =
@@ -66,6 +87,8 @@ public sealed class ExecutionService : IExecutionService
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = outputEncoding,
+            StandardErrorEncoding = outputEncoding,
             CreateNoWindow = true
         };
 

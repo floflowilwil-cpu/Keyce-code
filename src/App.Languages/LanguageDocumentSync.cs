@@ -117,7 +117,7 @@ public sealed class LanguageDocumentSync : IDisposable
     private void OnServerDisconnected(object? sender, string languageId)
     {
         foreach (var doc in _docs.Values)
-            if (string.Equals(doc.LanguageId, languageId, StringComparison.OrdinalIgnoreCase))
+           if (string.Equals(LanguageClient.ServerKey(doc.LanguageId), languageId, StringComparison.OrdinalIgnoreCase))
                 doc.NeedsReopen = true;
     }
 
