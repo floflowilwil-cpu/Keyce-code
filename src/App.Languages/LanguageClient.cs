@@ -18,6 +18,7 @@ public sealed partial class LanguageClient : ILanguageClient, IDisposable
              private static readonly Dictionary<string, (string Command, string Arguments)> Servers =
         new(StringComparer.OrdinalIgnoreCase)
         {
+            ["csharp"] = ("csharp-ls", ""),
             ["python"] = ("python", "-m pylsp"),
             ["json"] = ("cmd.exe", "/c vscode-json-language-server --stdio"),
             ["html"] = ("cmd.exe", "/c vscode-html-language-server --stdio"),
@@ -29,6 +30,7 @@ public sealed partial class LanguageClient : ILanguageClient, IDisposable
     private static readonly Dictionary<string, string> Extensions =
         new(StringComparer.OrdinalIgnoreCase)
         {
+            [".cs"] = "csharp",
             [".py"] = "python",
             [".json"] = "json",
             [".html"] = "html",

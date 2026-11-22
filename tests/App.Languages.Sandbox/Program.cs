@@ -1,5 +1,6 @@
 ﻿switch (args.FirstOrDefault())
 {
+    case "csharp": await CSharpTest.RunAsync(); break;
     case "shared": await SharedServerTest.RunAsync(); break;
     case "js": await TypeScriptTest.RunJavaScriptAsync(); break;
     case "ts": await TypeScriptTest.RunTypeScriptAsync(); break;
