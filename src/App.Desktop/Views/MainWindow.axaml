@@ -361,8 +361,12 @@
                 <MenuItem Header="Démarrer le débogage"
                           Click="OnStartDebug" />
                 <MenuItem Header="Exécuter sans débogage"
-                          Command="{Binding NotAvailableCommand}"
-                          CommandParameter="développeur 5|Exécuter sans débogage" />
+                          InputGesture="Ctrl+F5"
+                          Command="{Binding RunActiveFileCommand}"
+                          IsEnabled="{Binding HasFile}" />
+                <MenuItem Header="Arrêter l'exécution"
+                          Command="{Binding StopExecutionCommand}"
+                          IsEnabled="{Binding IsExecuting}" />
                 <MenuItem Header="Arrêter"
                           Command="{Binding StopDebugCommand}" />
             </MenuItem>
