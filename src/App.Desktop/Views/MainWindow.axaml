@@ -1341,17 +1341,40 @@
                             </DockPanel>
 
                             <!-- Sortie -->
-                            <TextBox IsVisible="{Binding IsOutputTab}"
-                                     Text="{Binding OutputText}"
-                                     IsReadOnly="True"
-                                     AcceptsReturn="True"
-                                     TextWrapping="NoWrap"
-                                     Background="{DynamicResource BgPanel}"
-                                     Foreground="{DynamicResource TextMain}"
-                                     BorderThickness="0"
-                                     FontFamily="Consolas,Cascadia Mono,monospace"
-                                     FontSize="12"
-                                     Padding="12,8" />
+                            <DockPanel IsVisible="{Binding IsOutputTab}">
+                                <!-- Saisie pour le programme en cours (entrée standard) -->
+                                <Grid DockPanel.Dock="Bottom"
+                                      ColumnDefinitions="*,Auto"
+                                      Margin="8,4"
+                                      IsVisible="{Binding IsExecuting}">
+                                    <TextBox Grid.Column="0"
+                                             x:Name="ExecutionInputBox"
+                                             Text="{Binding ExecutionInput}"
+                                             PlaceholderText="Saisie du programme — Entrée pour envoyer"
+                                             FontFamily="Consolas,Cascadia Mono,monospace"
+                                             FontSize="12">
+                                        <TextBox.KeyBindings>
+                                            <KeyBinding Gesture="Enter"
+                                                        Command="{Binding SendExecutionInputCommand}" />
+                                        </TextBox.KeyBindings>
+                                    </TextBox>
+                                    <Button Grid.Column="1"
+                                            Content="Envoyer"
+                                            Margin="6,0,0,0"
+                                            Command="{Binding SendExecutionInputCommand}" />
+                                </Grid>
+
+                                <TextBox Text="{Binding OutputText}"
+                                         IsReadOnly="True"
+                                         AcceptsReturn="True"
+                                         TextWrapping="NoWrap"
+                                         Background="{DynamicResource BgPanel}"
+                                         Foreground="{DynamicResource TextMain}"
+                                         BorderThickness="0"
+                                         FontFamily="Consolas,Cascadia Mono,monospace"
+                                         FontSize="12"
+                                         Padding="12,8" />
+                            </DockPanel>
 
                             <!-- Terminal PTY avec émulateur XTerm -->
                             <Grid IsVisible="{Binding IsTerminalTab}"

@@ -658,6 +658,32 @@ public partial class MainWindowViewModel
         }
     }
 
+    [ObservableProperty] private string _executionInput = "";
+
+    /// <summary>Envoie la ligne saisie au programme en cours (entrée standard) et l'affiche dans la sortie.</summary>
+    [RelayCommand]
+    private async Task SendExecutionInput()
+    {
+        if (_executionSessionId is not { } id)
+            return;
+
+        string text = ExecutionInput;
+        ExecutionInput = "";
+
+        // Il n'y a pas de terminal pour afficher la saisie : on la reproduit dans la sortie.
+        OutputText += text + "\n";
+
+        try
+        {
+            await _s.Execution.SendInputAsync(id, text + Environment.NewLine);
+        }
+        catch (Exception ex)
+        {
+            ExecutionStatus = "Saisie impossible : " + ex.Message;
+            Log("Saisie : " + ex.Message);
+        }
+    }
+
     [RelayCommand]
     private async Task StopExecution()
     {

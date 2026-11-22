@@ -266,6 +266,13 @@ public partial class MainWindow : Window
         if (e.PropertyName == nameof(MainWindowViewModel.ActiveTab))
             CodeEditor.DocumentId = vm.ActiveTab?.Id;
 
+        if (e.PropertyName == nameof(MainWindowViewModel.IsExecuting) && vm.IsExecuting)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(
+                () => ExecutionInputBox.Focus(),
+                Avalonia.Threading.DispatcherPriority.Background);
+        }
+
         if (e.PropertyName ==
             nameof(MainWindowViewModel.IsSidebarVisible))
         {
