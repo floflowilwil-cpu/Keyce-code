@@ -83,33 +83,31 @@ public partial class MainWindowViewModel
     private bool _isRightPanelVisible = true;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsRightBothMode))]
     [NotifyPropertyChangedFor(nameof(IsRightAiOnlyMode))]
     [NotifyPropertyChangedFor(nameof(IsRightGitOnlyMode))]
     [NotifyPropertyChangedFor(nameof(IsRightAiVisible))]
     [NotifyPropertyChangedFor(nameof(IsRightGitVisible))]
     [NotifyPropertyChangedFor(nameof(IsRightAiHighlighted))]
     [NotifyPropertyChangedFor(nameof(IsRightGitHighlighted))]
-    private int _rightPanelTab;
+    private int _rightPanelTab = 1;
 
-    public bool IsRightBothMode => RightPanelTab == 0;
-    public bool IsRightAiOnlyMode => RightPanelTab == 1;
+    public bool IsRightAiOnlyMode => RightPanelTab != 2;
     public bool IsRightGitOnlyMode => RightPanelTab == 2;
-    public bool IsRightAiVisible => RightPanelTab is 0 or 1;
-    public bool IsRightGitVisible => RightPanelTab is 0 or 2;
+    public bool IsRightAiVisible => RightPanelTab != 2;
+    public bool IsRightGitVisible => RightPanelTab == 2;
     public bool IsRightAiHighlighted => IsRightPanelVisible && IsRightAiVisible;
     public bool IsRightGitHighlighted => IsRightPanelVisible && IsRightGitVisible;
 
     [RelayCommand]
     private void SetRightPanelTab(string? tab)
     {
-        if (!int.TryParse(tab, out int mode) || mode is < 0 or > 2)
+        if (!int.TryParse(tab, out int mode) || mode is not (1 or 2))
             return;
 
         RightPanelTab = mode;
         IsRightPanelVisible = true;
 
-        if (mode is 0 or 2)
+        if (mode == 2)
             _ = Git.RefreshCommand.ExecuteAsync(null);
     }
 

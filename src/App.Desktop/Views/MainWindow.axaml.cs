@@ -80,7 +80,6 @@ public partial class MainWindow : Window
             OnTerminalOutputBytesReceived;
 
         ApplyRightPanelVisibility(vm);
-        ApplyRightPanelTab(vm);
     }
 
     private void DetachViewModel(MainWindowViewModel vm)
@@ -284,11 +283,6 @@ public partial class MainWindow : Window
         {
             ApplyRightPanelVisibility(vm);
         }
-        else if (e.PropertyName ==
-                 nameof(MainWindowViewModel.RightPanelTab))
-        {
-            ApplyRightPanelTab(vm);
-        }
     }
 
     private void ApplyRightPanelVisibility(MainWindowViewModel vm)
@@ -311,32 +305,6 @@ public partial class MainWindow : Window
             columns[4].Width = new GridLength(0);
             columns[5].MinWidth = 0;
             columns[5].Width = new GridLength(0);
-        }
-    }
-
-    private void ApplyRightPanelTab(MainWindowViewModel vm)
-    {
-        var rows = RightContentGrid.RowDefinitions;
-        if (rows.Count < 3)
-            return;
-
-        switch (vm.RightPanelTab)
-        {
-            case 1:
-                rows[0].Height = new GridLength(1, GridUnitType.Star);
-                rows[1].Height = new GridLength(0);
-                rows[2].Height = new GridLength(0);
-                break;
-            case 2:
-                rows[0].Height = new GridLength(0);
-                rows[1].Height = new GridLength(0);
-                rows[2].Height = new GridLength(1, GridUnitType.Star);
-                break;
-            default:
-                rows[0].Height = new GridLength(43, GridUnitType.Star);
-                rows[1].Height = new GridLength(4);
-                rows[2].Height = new GridLength(57, GridUnitType.Star);
-                break;
         }
     }
 
