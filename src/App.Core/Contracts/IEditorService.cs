@@ -7,6 +7,12 @@ public interface IEditorService
 {
     Task<DocumentInfo> OpenDocumentAsync(string path, CancellationToken ct = default);
     string GetText(DocumentId id);
+    /// <summary>Nombre de lignes (au moins 1). Sert à l'affichage : ne copie pas le texte.</summary>
+    int GetLineCount(DocumentId id);
+
+    /// <summary>Texte d'une ligne (base 0), sans saut de ligne. Sert à l'affichage : ne copie pas tout le document.</summary>
+    string GetLineText(DocumentId id, int line);
+
     void ApplyEdit(DocumentId id, TextEdit edit);
 
     /// <summary>

@@ -22,7 +22,8 @@ namespace App.Desktop.Views;
 
 public partial class MainWindow : Window
 {
-    private double _sidebarWidth = 260;
+    private double _sidebarWidth = 240;
+    private double _rightPanelWidth = 350;
     private double _bottomHeight = 200;
     private MainWindowViewModel? _vm;
 
@@ -37,25 +38,6 @@ public partial class MainWindow : Window
         _terminalModel.UserInput += OnTerminalUserInput;
 
         ApplySettings();
-
-        EditorBox.PropertyChanged += (_, e) =>
-        {
-            if (e.Property == TextBox.CaretIndexProperty &&
-                DataContext is MainWindowViewModel vm)
-            {
-                vm.UpdateCaret(EditorBox.Text, EditorBox.CaretIndex);
-            }
-        };
-
-        EditorBox.AddHandler(
-            TextInputEvent,
-            OnEditorTextInput,
-            RoutingStrategies.Tunnel);
-
-        EditorBox.AddHandler(
-            KeyDownEvent,
-            OnEditorKeyDown,
-            RoutingStrategies.Tunnel);
 
         DataContextChanged += OnDataContextChanged;
         Activated += OnActivated;
@@ -85,18 +67,29 @@ public partial class MainWindow : Window
     private void AttachViewModel(MainWindowViewModel vm)
     {
         vm.PropertyChanged += OnViewModelPropertyChanged;
-        vm.SelectionRequested += OnSelectionRequested;
         vm.ConflictDetected += OnConflictDetected;
+
+        CodeEditor.Attach(vm.EditorService, vm.EditorCommands);
+        CodeEditor.DocumentId = vm.ActiveTab?.Id;
+        CodeEditor.CaretChanged += OnEditorCaretChanged;
+        CodeEditor.SaveRequested += OnEditorSaveRequested;
+        CodeEditor.EditRejected += OnEditorEditRejected;
 
         vm.TerminalService.OutputBytesReceived +=
             OnTerminalOutputBytesReceived;
+
+        ApplyRightPanelVisibility(vm);
+        ApplyRightPanelTab(vm);
     }
 
     private void DetachViewModel(MainWindowViewModel vm)
     {
         vm.PropertyChanged -= OnViewModelPropertyChanged;
-        vm.SelectionRequested -= OnSelectionRequested;
         vm.ConflictDetected -= OnConflictDetected;
+
+        CodeEditor.CaretChanged -= OnEditorCaretChanged;
+        CodeEditor.SaveRequested -= OnEditorSaveRequested;
+        CodeEditor.EditRejected -= OnEditorEditRejected;
 
         vm.TerminalService.OutputBytesReceived -=
             OnTerminalOutputBytesReceived;
@@ -160,240 +153,46 @@ public partial class MainWindow : Window
     // Éditeur
     // ================================================================
 
-    private void OnSelectionRequested(int anchor, int active)
+    private void OnEditorCaretChanged(object? sender, EventArgs e)
     {
-        Dispatcher.UIThread.Post(() =>
-        {
-            int length = EditorBox.Text?.Length ?? 0;
-
-            anchor = Math.Clamp(anchor, 0, length);
-            active = Math.Clamp(active, 0, length);
-
-            EditorBox.CaretIndex = active;
-            EditorBox.SelectionStart = anchor;
-            EditorBox.SelectionEnd = active;
-        });
+        if (_vm is null) return;
+        var caret = CodeEditor.CaretPosition;
+        _vm.Position = $"Ln {caret.Line + 1}, Col {caret.Column + 1}";
     }
 
-    private void SyncSelection()
+    private async void OnEditorSaveRequested(object? sender, EventArgs e)
     {
-        _vm?.SyncSelection(
-            EditorBox.SelectionStart,
-            EditorBox.SelectionEnd,
-            EditorBox.CaretIndex);
+        await SaveAsync();
     }
 
-    private void OnEditorTextInput(
-        object? sender,
-        TextInputEventArgs e)
+    private void OnEditorEditRejected(object? sender, string message)
     {
-        if (_vm is null ||
-            !_vm.HasFile ||
-            string.IsNullOrEmpty(e.Text))
-        {
-            return;
-        }
-
-        if (e.Text[0] < ' ')
-            return;
-
-        SyncSelection();
-
-        string text = e.Text;
-
-        _vm.ExecuteEdit(
-            (controller, id) => controller.TypeText(id, text));
-
-        e.Handled = true;
+        if (_vm is not null) _vm.StatusMessage = message;
     }
 
-    private async void OnEditorKeyDown(
-        object? sender,
-        KeyEventArgs e)
-    {
-        if (_vm is null || !_vm.HasFile)
-            return;
-
-        bool ctrl =
-            e.KeyModifiers.HasFlag(KeyModifiers.Control) ||
-            e.KeyModifiers.HasFlag(KeyModifiers.Meta);
-
-        bool shift =
-            e.KeyModifiers.HasFlag(KeyModifiers.Shift);
-
-        bool alt =
-            e.KeyModifiers.HasFlag(KeyModifiers.Alt);
-
-        if (ctrl)
-        {
-            switch (e.Key)
-            {
-                case Key.Z when !shift:
-                    _vm.UndoCommand.Execute(null);
-                    e.Handled = true;
-                    return;
-
-                case Key.Y:
-                case Key.Z when shift:
-                    _vm.RedoCommand.Execute(null);
-                    e.Handled = true;
-                    return;
-
-                case Key.C:
-                    e.Handled = true;
-                    await CopyAsync(cut: false);
-                    return;
-
-                case Key.X:
-                    e.Handled = true;
-                    await CopyAsync(cut: true);
-                    return;
-
-                case Key.V:
-                    e.Handled = true;
-                    await PasteAsync();
-                    return;
-
-                case Key.D when shift:
-                    SyncSelection();
-                    _vm.ExecuteEdit(
-                        (controller, id) => controller.DuplicateLines(id));
-                    e.Handled = true;
-                    return;
-
-                case Key.Oem2 when !shift:
-                    SyncSelection();
-                    _vm.ExecuteEdit(
-                        (controller, id) => controller.CommentLines(id));
-                    e.Handled = true;
-                    return;
-
-                case Key.Oem2 when shift:
-                    SyncSelection();
-                    _vm.ExecuteEdit(
-                        (controller, id) => controller.UncommentLines(id));
-                    e.Handled = true;
-                    return;
-            }
-
-            return;
-        }
-
-        if (alt && e.Key is Key.Up or Key.Down)
-        {
-            SyncSelection();
-
-            if (e.Key == Key.Up)
-            {
-                _vm.ExecuteEdit(
-                    (controller, id) => controller.MoveLinesUp(id));
-            }
-            else
-            {
-                _vm.ExecuteEdit(
-                    (controller, id) => controller.MoveLinesDown(id));
-            }
-
-            e.Handled = true;
-            return;
-        }
-
-        switch (e.Key)
-        {
-            case Key.Back:
-                SyncSelection();
-                _vm.ExecuteEdit(
-                    (controller, id) => controller.Backspace(id));
-                e.Handled = true;
-                break;
-
-            case Key.Delete:
-                SyncSelection();
-                _vm.ExecuteEdit(
-                    (controller, id) => controller.DeleteForward(id));
-                e.Handled = true;
-                break;
-
-            case Key.Enter:
-                SyncSelection();
-                _vm.ExecuteEdit(
-                    (controller, id) => controller.InsertNewLine(id));
-                e.Handled = true;
-                break;
-
-            case Key.Tab:
-                SyncSelection();
-
-                if (shift)
-                {
-                    _vm.ExecuteEdit(
-                        (controller, id) => controller.Outdent(id));
-                }
-                else
-                {
-                    _vm.ExecuteEdit(
-                        (controller, id) => controller.Indent(id));
-                }
-
-                e.Handled = true;
-                break;
-        }
-    }
-
-    private async Task CopyAsync(bool cut)
-    {
-        if (_vm is null)
-            return;
-
-        SyncSelection();
-
-        string? text = cut
-            ? _vm.CutText()
-            : _vm.CopyText();
-
-        if (text is not null && Clipboard is { } clipboard)
-            await clipboard.SetTextAsync(text);
-    }
-
-    private async Task PasteAsync()
-    {
-        if (_vm is null || Clipboard is not { } clipboard)
-            return;
-
-        using var data = await clipboard.TryGetDataAsync();
-
-        string? text = data is null
-            ? null
-            : await data.TryGetTextAsync();
-
-        if (string.IsNullOrEmpty(text))
-            return;
-
-        SyncSelection();
-
-        _vm.ExecuteEdit(
-            (controller, id) => controller.Paste(id, text));
-    }
+    // Le contrôle conserve directement la sélection dans IEditorService.
+    // Cette méthode reste appelée par les commandes de recherche et les menus.
+    private void SyncSelection() { }
 
     private async void OnCut(
         object? sender,
         RoutedEventArgs e)
     {
-        await CopyAsync(cut: true);
+        await CodeEditor.CopyAsync(cut: true);
     }
 
     private async void OnCopy(
         object? sender,
         RoutedEventArgs e)
     {
-        await CopyAsync(cut: false);
+        await CodeEditor.CopyAsync(cut: false);
     }
 
     private async void OnPaste(
         object? sender,
         RoutedEventArgs e)
     {
-        await PasteAsync();
+        await CodeEditor.PasteAsync();
     }
 
     // ================================================================
@@ -433,6 +232,9 @@ public partial class MainWindow : Window
     {
         if (sender is not MainWindowViewModel vm)
             return;
+
+        if (e.PropertyName == nameof(MainWindowViewModel.ActiveTab))
+            CodeEditor.DocumentId = vm.ActiveTab?.Id;
 
         if (e.PropertyName ==
             nameof(MainWindowViewModel.IsSidebarVisible))
@@ -476,6 +278,65 @@ public partial class MainWindow : Window
                 rows[3].Height = new GridLength(0);
             }
         }
+        else if (e.PropertyName ==
+                 nameof(MainWindowViewModel.IsRightPanelVisible))
+        {
+            ApplyRightPanelVisibility(vm);
+        }
+        else if (e.PropertyName ==
+                 nameof(MainWindowViewModel.RightPanelTab))
+        {
+            ApplyRightPanelTab(vm);
+        }
+    }
+
+    private void ApplyRightPanelVisibility(MainWindowViewModel vm)
+    {
+        var columns = RootGrid.ColumnDefinitions;
+        if (columns.Count < 6)
+            return;
+
+        if (vm.IsRightPanelVisible)
+        {
+            columns[4].Width = new GridLength(4);
+            columns[5].MinWidth = 240;
+            columns[5].Width = new GridLength(_rightPanelWidth);
+        }
+        else
+        {
+            if (columns[5].ActualWidth > 0)
+                _rightPanelWidth = columns[5].ActualWidth;
+
+            columns[4].Width = new GridLength(0);
+            columns[5].MinWidth = 0;
+            columns[5].Width = new GridLength(0);
+        }
+    }
+
+    private void ApplyRightPanelTab(MainWindowViewModel vm)
+    {
+        var rows = RightContentGrid.RowDefinitions;
+        if (rows.Count < 3)
+            return;
+
+        switch (vm.RightPanelTab)
+        {
+            case 1:
+                rows[0].Height = new GridLength(1, GridUnitType.Star);
+                rows[1].Height = new GridLength(0);
+                rows[2].Height = new GridLength(0);
+                break;
+            case 2:
+                rows[0].Height = new GridLength(0);
+                rows[1].Height = new GridLength(0);
+                rows[2].Height = new GridLength(1, GridUnitType.Star);
+                break;
+            default:
+                rows[0].Height = new GridLength(43, GridUnitType.Star);
+                rows[1].Height = new GridLength(4);
+                rows[2].Height = new GridLength(57, GridUnitType.Star);
+                break;
+        }
     }
 
     // ================================================================
@@ -515,6 +376,11 @@ public partial class MainWindow : Window
         {
             OnGoToFile(null, null!);
             e.Handled = true;
+        }
+        else if (ctrl && e.Key == Key.O)
+        {
+            e.Handled = true;
+            OnOpenFile(null, null!);
         }
         else if (ctrl && e.Key == Key.N)
         {
@@ -574,9 +440,118 @@ public partial class MainWindow : Window
             e.AddedItems[0] is FileNode node &&
             _vm is not null)
         {
+            _vm.SelectedNode = node;
             await _vm.OpenFileAsync(node);
         }
     }
+
+    // ================================================================
+    // Fichier : ouvrir un fichier, créer un dossier / fichier, supprimer
+    // ================================================================
+
+    private async void OnOpenFile(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (_vm is null)
+            return;
+
+        var files = await StorageProvider.OpenFilePickerAsync(
+            new FilePickerOpenOptions
+            {
+                Title = "Ouvrir un fichier",
+                AllowMultiple = true
+            });
+
+        foreach (var file in files)
+            await _vm.OpenPathAsync(file.Path.LocalPath);
+    }
+
+    private async void OnNewFileHere(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (_vm is null)
+            return;
+
+        // Sans dossier ouvert : fichier sans titre (« Enregistrer sous » demandera l'emplacement).
+        if (!_vm.HasFolder)
+        {
+            _vm.NewFileCommand.Execute(null);
+            return;
+        }
+
+        string? name = await Prompt("Nouveau fichier", "Nom du fichier :");
+
+        if (!string.IsNullOrWhiteSpace(name))
+            await _vm.CreateEntryAsync(name, isDirectory: false);
+    }
+
+    private async void OnNewFolderHere(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (_vm is null)
+            return;
+
+        if (_vm.HasFolder)
+        {
+            string? name = await Prompt("Nouveau dossier", "Nom du dossier :");
+
+            if (!string.IsNullOrWhiteSpace(name))
+                await _vm.CreateEntryAsync(name, isDirectory: true);
+
+            return;
+        }
+
+        // Aucun dossier ouvert : on choisit où le créer, puis on l'ouvre comme espace de travail.
+        var parents = await StorageProvider.OpenFolderPickerAsync(
+            new FolderPickerOpenOptions
+            {
+                Title = "Où créer le nouveau dossier ?",
+                AllowMultiple = false
+            });
+
+        if (parents.Count == 0)
+            return;
+
+        string? folderName = await Prompt("Nouveau dossier", "Nom du dossier :");
+
+        if (string.IsNullOrWhiteSpace(folderName))
+            return;
+
+        string? created = await _vm.CreateEntryAsync(
+            folderName,
+            isDirectory: true,
+            parentFolder: parents[0].Path.LocalPath);
+
+        if (created is not null)
+            await _vm.OpenWorkspaceAsync(created);
+    }
+
+    private async void OnDeleteSelected(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (_vm?.SelectedNode is not { } node)
+            return;
+
+        int choice = await Choose(
+            "Supprimer",
+            node.IsDirectory
+                ? $"Supprimer le dossier « {node.Name} » et tout son contenu ? Cette action est définitive."
+                : $"Supprimer le fichier « {node.Name} » ? Cette action est définitive.",
+            "Supprimer",
+            "Annuler");
+
+        if (choice == 0)
+            await _vm.DeleteNodeAsync(node);
+    }
+
+    private void OnRefreshExplorer(
+        object? sender,
+        RoutedEventArgs e) =>
+        _vm?.RefreshExplorerCommand.Execute(null);
 
     private async void OnProblemSelected(
         object? sender,
@@ -879,6 +854,28 @@ public partial class MainWindow : Window
         _vm.ShowOutput();
     }
 
+    private void OnGitCheckoutBranchClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: GitBranch branch } &&
+            _vm is not null)
+        {
+            _vm.Git.CheckoutBranchCommand.Execute(branch.Name);
+        }
+    }
+
+    private void OnGitMergeBranchClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: GitBranch branch } &&
+            _vm is not null)
+        {
+            _vm.Git.MergeBranchCommand.Execute(branch.Name);
+        }
+    }
+
     // ================================================================
     // Débogage
     // ================================================================
@@ -965,6 +962,17 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnExtensionOpenReadme(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: ExtensionItem item } &&
+            _vm is not null)
+        {
+            _vm.OpenExtensionReadmeCommand.Execute(item.Id);
+        }
+    }
+
     private void OnExtensionUninstall(
         object? sender,
         RoutedEventArgs e)
@@ -973,6 +981,71 @@ public partial class MainWindow : Window
             _vm is not null)
         {
             _vm.UninstallExtensionCommand.Execute(item.Id);
+        }
+    }
+
+    private async void OnUpdateExtension(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (_vm is null)
+            return;
+
+        var folders = await StorageProvider.OpenFolderPickerAsync(
+            new FolderPickerOpenOptions
+            {
+                Title = "Dossier de la nouvelle version (extension.json)",
+                AllowMultiple = false
+            });
+
+        if (folders.Count > 0)
+        {
+            await _vm.UpdateExtensionAsync(
+                folders[0].Path.LocalPath);
+        }
+    }
+
+    private void OnExecuteExtensionCommand(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: CommandInfo cmd } &&
+            _vm is not null)
+        {
+            _vm.ExecuteExtensionCommandCommand.Execute(cmd.Id);
+        }
+    }
+
+    private void OnExtensionUpdateFromCatalog(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: ExtensionItem item } &&
+            _vm is not null)
+        {
+            _vm.UpdateFromCatalogCommand.Execute(item.Id);
+        }
+    }
+
+    private void OnCatalogInstallClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: CatalogExtensionItem item } &&
+            _vm is not null)
+        {
+            _vm.InstallFromCatalogCommand.Execute(item.Id);
+        }
+    }
+
+    private void OnCatalogUpdateClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: CatalogExtensionItem item } &&
+            _vm is not null)
+        {
+            _vm.UpdateFromCatalogCommand.Execute(item.Id);
         }
     }
 
@@ -1008,7 +1081,7 @@ public partial class MainWindow : Window
             return;
 
         _vm.GoToLine(line);
-        EditorBox.Focus();
+        CodeEditor.Focus();
     }
 
     // ================================================================

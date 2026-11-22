@@ -17,6 +17,8 @@ public sealed class GitPanelController : INotifyPropertyChanged
     private IReadOnlyList<GitBranch> _branches = [];
     private IReadOnlyList<GitCommitInfo> _recentCommits = [];
     private string _commitMessage = string.Empty;
+    private string _newBranchName = string.Empty;
+    private IReadOnlyList<string> _conflictedFiles = [];
     private string _currentDiff = string.Empty;
     private string? _errorMessage;
     private bool _isBusy;
@@ -63,6 +65,24 @@ public sealed class GitPanelController : INotifyPropertyChanged
         get => _commitMessage;
         set => SetProperty(ref _commitMessage, value);
     }
+
+    public string NewBranchName
+    {
+        get => _newBranchName;
+        set => SetProperty(ref _newBranchName, value);
+    }
+
+    public IReadOnlyList<string> ConflictedFiles
+    {
+        get => _conflictedFiles;
+        private set
+        {
+            if (SetProperty(ref _conflictedFiles, value))
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasConflicts)));
+        }
+    }
+
+    public bool HasConflicts => _conflictedFiles.Count > 0;
 
     public string CurrentDiff
     {
@@ -114,6 +134,25 @@ public sealed class GitPanelController : INotifyPropertyChanged
         CancellationToken ct = default) =>
         RunAndRefreshAsync(token => _gitService.CreateBranchAsync(branch, checkout, token), ct);
 
+    public Task<bool> CreateNewBranchAsync(CancellationToken ct = default) =>
+        RunAndRefreshAsync(async token =>
+        {
+            await _gitService.CreateBranchAsync(NewBranchName.Trim(), checkout: true, token);
+            NewBranchName = string.Empty;
+        }, ct);
+
+    public Task<bool> MergeBranchAsync(string branch, CancellationToken ct = default) =>
+        ExecuteSafeAsync(async token =>
+        {
+            GitMergeResult result = await _gitService.MergeAsync(branch, token);
+            await ReloadStateAsync(token);
+            if (!result.Succeeded)
+                ErrorMessage = $"Conflit de fusion sur : {string.Join(", ", result.ConflictedFiles)}";
+        }, ct);
+
+    public Task<bool> AbortMergeAsync(CancellationToken ct = default) =>
+        RunAndRefreshAsync(_gitService.AbortMergeAsync, ct);
+
     public Task<bool> LoadDiffAsync(string? path = null, CancellationToken ct = default) =>
         ExecuteSafeAsync(async token =>
         {
@@ -141,6 +180,10 @@ public sealed class GitPanelController : INotifyPropertyChanged
         CurrentBranch = status.Branch;
         StagedFiles = status.Files.Where(f => f.IsStaged).ToList();
         UnstagedFiles = status.Files.Where(f => !f.IsStaged).ToList();
+        ConflictedFiles = status.Files
+            .Where(f => f.State == GitFileState.Conflicted)
+            .Select(f => f.Path)
+            .ToList();
 
         Branches = await _gitService.GetBranchesAsync(ct);
 
