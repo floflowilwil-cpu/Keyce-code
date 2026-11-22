@@ -32,21 +32,6 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        var settings = new global::App.Core.Settings.JsonSettingsService();
-        Opened += (_, _) =>
-        {
-            var w = new Window
-            {
-                Title = "Paramètres",
-                Width = 1000,
-                Height = 700,
-                Content = new Views.SettingsView
-                {
-                    DataContext = new ViewModels.SettingsViewModel(settings)
-                }
-            };
-            w.Show(this);
-        };
 
         // Initialisation de l'émulateur de terminal.
         TerminalView.Model = _terminalModel;
