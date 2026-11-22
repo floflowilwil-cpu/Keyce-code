@@ -311,21 +311,96 @@ public sealed class GitService : IGitService
             if (string.IsNullOrWhiteSpace(branch))
                 throw;
 
-            string remotes = await RunGitAsync(["remote"], ct);
-            string remote = remotes
-                .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-                .FirstOrDefault()?.Trim() ?? "origin";
-
-            if (string.IsNullOrWhiteSpace(remote))
-                remote = "origin";
-
+            string remote = await GetDefaultRemoteAsync(ct);
             await RunGitAsync(["push", "--set-upstream", remote, branch], ct);
         }
     }
 
     public async Task PullAsync(CancellationToken ct = default)
     {
-        await RunGitAsync(["pull", "--no-edit"], ct);
+        try
+        {
+            await RunGitAsync(["pull", "--no-rebase", "--no-edit"], ct);
+        }
+        catch (AppException ex) when (IsNoTrackingBranchError(ex.Message))
+        {
+            string remote = await GetDefaultRemoteAsync(ct);
+            string targetBranch = await ResolveRemoteTargetBranchAsync(remote, ct);
+            await RunGitAsync(["pull", "--no-rebase", "--no-edit", remote, targetBranch], ct);
+        }
+    }
+
+    private async Task<string> GetDefaultRemoteAsync(CancellationToken ct)
+    {
+        string remotes = await RunGitAsync(["remote"], ct);
+        string? remote = remotes
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(r => r.Trim())
+            .FirstOrDefault(r => !string.IsNullOrEmpty(r));
+
+        return string.IsNullOrEmpty(remote) ? "origin" : remote;
+    }
+
+    private async Task<string> ResolveRemoteTargetBranchAsync(string remote, CancellationToken ct)
+    {
+        string refsOutput = await RunGitAsync(
+            ["for-each-ref", "--format=%(refname:short)", $"refs/remotes/{remote}"],
+            ct);
+
+        string prefix = remote + "/";
+        var remoteBranches = new List<string>();
+        foreach (string raw in refsOutput.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            string trimmed = raw.Trim();
+            if (trimmed.Equals(remote, StringComparison.OrdinalIgnoreCase)
+                || trimmed.Equals($"{remote}/HEAD", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                string branchName = trimmed[prefix.Length..];
+                if (!string.IsNullOrWhiteSpace(branchName))
+                    remoteBranches.Add(branchName);
+            }
+        }
+
+        if (remoteBranches.Count == 0)
+        {
+            throw new AppException(
+                ErrorCode.Conflict,
+                "Aucune branche distante n'existe encore sur ce dépôt. Effectuez d'abord un Push.");
+        }
+
+        string currentBranch = (await RunGitAsync(["branch", "--show-current"], ct)).Trim();
+        if (!string.IsNullOrWhiteSpace(currentBranch))
+        {
+            string? sameName = remoteBranches.FirstOrDefault(
+                b => b.Equals(currentBranch, StringComparison.Ordinal));
+            if (sameName is not null)
+                return sameName;
+        }
+
+        try
+        {
+            string headRef = (await RunGitAsync(
+                ["symbolic-ref", "--short", $"refs/remotes/{remote}/HEAD"],
+                ct)).Trim();
+            if (headRef.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                string defaultBranch = headRef[prefix.Length..];
+                if (!string.IsNullOrWhiteSpace(defaultBranch))
+                    return defaultBranch;
+            }
+        }
+        catch (AppException)
+        {
+        }
+
+        return remoteBranches.FirstOrDefault(b => b.Equals("main", StringComparison.Ordinal))
+            ?? remoteBranches.FirstOrDefault(b => b.Equals("master", StringComparison.Ordinal))
+            ?? remoteBranches[0];
     }
 
     private static bool IsUnbornHeadError(string message) =>
@@ -344,6 +419,11 @@ public sealed class GitService : IGitService
         message.Contains("--set-upstream", StringComparison.OrdinalIgnoreCase)
         || message.Contains("no upstream branch", StringComparison.OrdinalIgnoreCase)
         || message.Contains("branche amont", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsNoTrackingBranchError(string message) =>
+        message.Contains("no tracking information", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("aucune information de suivi", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("--set-upstream-to", StringComparison.OrdinalIgnoreCase);
 
     private static void RequireNonEmpty(string value, string message)
     {

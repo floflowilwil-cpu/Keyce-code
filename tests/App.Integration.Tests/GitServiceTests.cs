@@ -939,6 +939,44 @@ public class GitServiceTests
         }
     }
 
+    [Fact]
+    public async Task PullAsync_OnNewLocalBranchWithoutTracking_ShouldPullDefaultRemoteBranch()
+    {
+        string directory = CreateTemporaryDirectory();
+        string remoteDirectory = Path.Combine(directory, "remote.git");
+        string repositoryDirectory = Path.Combine(directory, "repository");
+        string cloneDirectory = Path.Combine(directory, "clone");
+        Directory.CreateDirectory(repositoryDirectory);
+
+        try
+        {
+            await RunGitAsync(directory, "init", "--bare", "--initial-branch=main", remoteDirectory);
+            await InitializeRepositoryAsync(repositoryDirectory);
+            await RunGitAsync(repositoryDirectory, "remote", "add", "origin", remoteDirectory);
+            await RunGitAsync(repositoryDirectory, "push", "-u", "origin", "main");
+
+            await RunGitAsync(directory, "clone", remoteDirectory, cloneDirectory);
+            await RunGitAsync(cloneDirectory, "config", "user.name", "Git Tests");
+            await RunGitAsync(cloneDirectory, "config", "user.email", "git-tests@example.com");
+            await File.WriteAllTextAsync(Path.Combine(cloneDirectory, "tracked.txt"), "updated from remote");
+            await RunGitAsync(cloneDirectory, "add", "tracked.txt");
+            await RunGitAsync(cloneDirectory, "commit", "-m", "Remote update");
+            await RunGitAsync(cloneDirectory, "push");
+
+            var service = CreateService(repositoryDirectory);
+            await service.CreateBranchAsync("je_teste_git", checkout: true);
+
+            await service.PullAsync();
+
+            string content = await File.ReadAllTextAsync(Path.Combine(repositoryDirectory, "tracked.txt"));
+            Assert.Equal("updated from remote", content);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
     private static GitService CreateService(string directory)
     {
         var workspace = new FakeWorkspaceService(

@@ -1670,10 +1670,12 @@
                                             <Border Classes="card"
                                                     BorderBrush="#F87171"
                                                     IsVisible="{Binding HasGitError}">
-                                                <TextBlock Text="{Binding GitMessage}"
-                                                           Foreground="#F87171"
-                                                           FontSize="12"
-                                                           TextWrapping="Wrap" />
+                                                <ScrollViewer MaxHeight="120">
+                                                    <TextBlock Text="{Binding GitMessage}"
+                                                               Foreground="#F87171"
+                                                               FontSize="12"
+                                                               TextWrapping="Wrap" />
+                                                </ScrollViewer>
                                             </Border>
 
                                             <!-- Opération Git en cours / confirmation -->
