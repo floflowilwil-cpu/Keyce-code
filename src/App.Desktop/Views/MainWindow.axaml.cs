@@ -890,10 +890,23 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (file.State == GitFileState.Untracked)
+        {
+            string? fullPath = _vm.ResolveWorkspaceFilePath(file.Path);
+            if (!string.IsNullOrWhiteSpace(fullPath) && File.Exists(fullPath))
+                await _vm.OpenPathAsync(fullPath);
+
+            _vm.StatusMessage = $"Nouveau fichier non suivi : {file.Path}";
+            _vm.Log(_vm.StatusMessage);
+            return;
+        }
+
         await _vm.Git.LoadDiffCommand.ExecuteAsync(file.Path);
 
-        _vm.Log(
-            $"Diff de {file.Path} :\n{_vm.Git.Controller.CurrentDiff}");
+        string diff = _vm.Git.Controller.CurrentDiff;
+        _vm.Log(string.IsNullOrWhiteSpace(diff)
+            ? $"Aucune différence Git détectée pour {file.Path}."
+            : $"Diff de {file.Path} :\n{diff}");
 
         _vm.ShowOutput();
     }

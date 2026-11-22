@@ -1,6 +1,7 @@
 
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using App.Core.Contracts;
 using App.Core.Errors;
 using App.Core.Models;
@@ -89,7 +90,7 @@ public sealed class GitService : IGitService
         return new GitStatus(branch, files);
     }
 
-    public Task<string> DiffAsync(
+    public async Task<string> DiffAsync(
         string? path = null,
         CancellationToken ct = default)
     {
@@ -103,7 +104,22 @@ public sealed class GitService : IGitService
             arguments.Add(path);
         }
 
-        return RunGitAsync(arguments, ct);
+        try
+        {
+            return await RunGitAsync(arguments, ct);
+        }
+        catch (AppException ex) when (IsUnbornHeadError(ex.Message))
+        {
+            // Dépôt tout juste initialisé sans commit : comparer uniquement l'index.
+            var fallback = new List<string> { "diff", "--cached" };
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                fallback.Add("--");
+                fallback.Add(path);
+            }
+
+            return await RunGitAsync(fallback, ct);
+        }
     }
 
     public async Task StageAsync(
@@ -119,7 +135,15 @@ public sealed class GitService : IGitService
         CancellationToken ct = default)
     {
         RequireNonEmpty(path, "Le chemin du fichier ne peut pas être vide.");
-        await RunGitAsync(["restore", "--staged", "--", path], ct);
+        try
+        {
+            await RunGitAsync(["restore", "--staged", "--", path], ct);
+        }
+        catch (AppException ex) when (IsUnbornHeadError(ex.Message))
+        {
+            // Dépôt tout juste initialisé sans commit : retirer de l'index avec rm --cached.
+            await RunGitAsync(["rm", "--cached", "--", path], ct);
+        }
     }
 
     public async Task CommitAsync(
@@ -277,13 +301,49 @@ public sealed class GitService : IGitService
 
     public async Task PushAsync(CancellationToken ct = default)
     {
-        await RunGitAsync(["push"], ct);
+        try
+        {
+            await RunGitAsync(["push"], ct);
+        }
+        catch (AppException ex) when (IsNoUpstreamBranchError(ex.Message))
+        {
+            string branch = (await RunGitAsync(["branch", "--show-current"], ct)).Trim();
+            if (string.IsNullOrWhiteSpace(branch))
+                throw;
+
+            string remotes = await RunGitAsync(["remote"], ct);
+            string remote = remotes
+                .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault()?.Trim() ?? "origin";
+
+            if (string.IsNullOrWhiteSpace(remote))
+                remote = "origin";
+
+            await RunGitAsync(["push", "--set-upstream", remote, branch], ct);
+        }
     }
 
     public async Task PullAsync(CancellationToken ct = default)
     {
-        await RunGitAsync(["pull"], ct);
+        await RunGitAsync(["pull", "--no-edit"], ct);
     }
+
+    private static bool IsUnbornHeadError(string message) =>
+        (message.Contains("HEAD", StringComparison.OrdinalIgnoreCase)
+            && (message.Contains("ambiguous", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("ambigu", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("bad revision", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("révision", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("unknown revision", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("resolve", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("résoudre", StringComparison.OrdinalIgnoreCase)))
+        || message.Contains("commits yet", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("aucun commit", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsNoUpstreamBranchError(string message) =>
+        message.Contains("--set-upstream", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("no upstream branch", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("branche amont", StringComparison.OrdinalIgnoreCase);
 
     private static void RequireNonEmpty(string value, string message)
     {
@@ -306,8 +366,12 @@ public sealed class GitService : IGitService
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
             CreateNoWindow = true
         };
+        startInfo.Environment["GIT_MERGE_AUTOEDIT"] = "no";
+        startInfo.Environment["GIT_EDITOR"] = "true";
 
         foreach (string argument in arguments)
             startInfo.ArgumentList.Add(argument);
@@ -339,11 +403,13 @@ public sealed class GitService : IGitService
 
             if (process.ExitCode != 0)
             {
-                throw new AppException(
-                    ErrorCode.Conflict,
-                    string.IsNullOrWhiteSpace(error)
-                        ? $"La commande Git a échoué (code {process.ExitCode})."
-                        : error.Trim());
+                string detail = !string.IsNullOrWhiteSpace(error)
+                    ? error.Trim()
+                    : (!string.IsNullOrWhiteSpace(output)
+                        ? output.Trim()
+                        : $"La commande Git a échoué (code {process.ExitCode}).");
+
+                throw new AppException(ErrorCode.Conflict, detail);
             }
 
             return output.Replace("\r\n", "\n");

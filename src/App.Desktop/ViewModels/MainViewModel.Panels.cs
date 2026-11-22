@@ -26,9 +26,12 @@ public partial class MainWindowViewModel
     {
         Git.Controller.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == "ErrorMessage") UI(UpdateGitState);
-            else if (e.PropertyName is "StagedFiles" or "UnstagedFiles") UI(UpdateGitCounts);
+            if (e.PropertyName is "ErrorMessage" or "CurrentBranch" or "IsBusy" or "LastSuccessMessage")
+                UI(() => OnGitControllerUpdated(e.PropertyName));
+            else if (e.PropertyName is "StagedFiles" or "UnstagedFiles")
+                UI(UpdateGitCounts);
         };
+        _s.Workspace.WorkspaceChanged += (_, _) => UI(() => OnGitControllerUpdated(null));
         _s.Execution.OutputReceived += (_, e) => UI(() => OnExecutionOutputReceived(e));
         _s.Extensions.ExtensionChanged += (_, _) => UI(() => _ = RefreshExtensionsAsync());
         _s.CommandRegistry.CommandsChanged += (_, _) => UI(RefreshExtensionCommands);
@@ -150,9 +153,14 @@ public partial class MainWindowViewModel
     [ObservableProperty] private bool _isGitRepoMissing;
     [ObservableProperty] private bool _hasGitError;
     [ObservableProperty] private string _gitMessage = "";
+    [ObservableProperty] private bool _hasGitSuccess;
+    [ObservableProperty] private string _gitSuccessMessage = "";
 
     [ObservableProperty] private int _stagedCount;
     [ObservableProperty] private int _unstagedCount;
+
+    private string? _lastGitWorkspacePath;
+    private string? _lastGitBranch;
 
     public ObservableCollection<GitHubPullRequest> PullRequests { get; } = new();
     public ObservableCollection<LocalProjectItem> LocalProjects { get; } = new();
@@ -309,6 +317,18 @@ public partial class MainWindowViewModel
         return false;
     }
 
+    private void OnGitControllerUpdated(string? propertyName)
+    {
+        UpdateGitState();
+
+        if (propertyName == "LastSuccessMessage"
+            && !string.IsNullOrWhiteSpace(Git.Controller.LastSuccessMessage))
+        {
+            StatusMessage = Git.Controller.LastSuccessMessage;
+            Log($"[Git] {Git.Controller.LastSuccessMessage}");
+        }
+    }
+
     private void UpdateGitCounts()
     {
         StagedCount = Git.Controller.StagedFiles.Count;
@@ -331,8 +351,42 @@ public partial class MainWindowViewModel
         HasGitError = hasWs && !missing && !string.IsNullOrEmpty(msg);
         GitMessage = missing ? "Ce dossier n'est pas un dépôt Git." : msg ?? "";
 
+        string? okMsg = Git.Controller.LastSuccessMessage;
+        HasGitSuccess = hasWs && !missing && !HasGitError && !string.IsNullOrWhiteSpace(okMsg);
+        GitSuccessMessage = HasGitSuccess ? okMsg! : "";
+
         if (gitRoot is not null)
             SyncGitHubRepoFromGitConfig(gitRoot);
+
+        string branch = Git.Controller.CurrentBranch;
+        if (ws is null)
+        {
+            _lastGitWorkspacePath = null;
+            _lastGitBranch = null;
+            return;
+        }
+
+        bool sameWorkspace = string.Equals(ws.RootPath, _lastGitWorkspacePath, StringComparison.OrdinalIgnoreCase);
+        bool branchChanged = sameWorkspace
+            && !string.IsNullOrEmpty(_lastGitBranch)
+            && !string.IsNullOrEmpty(branch)
+            && !string.Equals(branch, _lastGitBranch, StringComparison.Ordinal);
+
+        _lastGitWorkspacePath = ws.RootPath;
+        if (!string.IsNullOrEmpty(branch))
+            _lastGitBranch = branch;
+
+        if (branchChanged)
+            RefreshExplorer();
+    }
+
+    public string? ResolveWorkspaceFilePath(string? relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath) || _s.Workspace.Current is not { } ws)
+            return null;
+
+        string root = FindGitRoot(ws.RootPath) ?? ws.RootPath;
+        return Path.GetFullPath(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
     }
 
     private void SyncGitHubRepoFromGitConfig(string gitRoot)

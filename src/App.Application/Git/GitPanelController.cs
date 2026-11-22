@@ -21,6 +21,7 @@ public sealed class GitPanelController : INotifyPropertyChanged
     private IReadOnlyList<string> _conflictedFiles = [];
     private string _currentDiff = string.Empty;
     private string? _errorMessage;
+    private string? _lastSuccessMessage;
     private bool _isBusy;
 
     public GitPanelController(IGitService gitService)
@@ -96,6 +97,12 @@ public sealed class GitPanelController : INotifyPropertyChanged
         private set => SetProperty(ref _errorMessage, value);
     }
 
+    public string? LastSuccessMessage
+    {
+        get => _lastSuccessMessage;
+        private set => SetProperty(ref _lastSuccessMessage, value);
+    }
+
     public bool IsBusy
     {
         get => _isBusy;
@@ -106,40 +113,63 @@ public sealed class GitPanelController : INotifyPropertyChanged
         ExecuteSafeAsync(ReloadStateAsync, ct);
 
     public Task<bool> StageAsync(string path, CancellationToken ct = default) =>
-        RunAndRefreshAsync(token => _gitService.StageAsync(path, token), ct);
+        RunAndRefreshAsync(token => _gitService.StageAsync(path, token), $"✓ Fichier indexé : {path}", ct);
 
     public Task<bool> UnstageAsync(string path, CancellationToken ct = default) =>
-        RunAndRefreshAsync(token => _gitService.UnstageAsync(path, token), ct);
+        RunAndRefreshAsync(token => _gitService.UnstageAsync(path, token), $"✓ Retiré de l'index : {path}", ct);
 
     public Task<bool> StageAllAsync(CancellationToken ct = default) =>
-        RunAndRefreshAsync(async token =>
-        {
-            foreach (GitFileStatus file in UnstagedFiles.ToList())
-                await _gitService.StageAsync(file.Path, token);
-        }, ct);
+        RunAndRefreshAsync(
+            token => _gitService.StageAsync(".", token),
+            "✓ Toutes les modifications ont été indexées.",
+            ct);
 
     public Task<bool> CommitAsync(CancellationToken ct = default) =>
         RunAndRefreshAsync(async token =>
         {
-            await _gitService.CommitAsync(CommitMessage, token);
+            string message = CommitMessage;
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                throw new AppException(
+                    ErrorCode.InvalidArgument,
+                    "Le message du commit ne peut pas être vide.");
+            }
+
+            GitStatus status = await _gitService.GetStatusAsync(token);
+            bool hasStaged = status.Files.Any(f => f.IsStaged);
+            if (!hasStaged)
+            {
+                if (status.Files.Count == 0)
+                {
+                    throw new AppException(
+                        ErrorCode.InvalidArgument,
+                        "Aucune modification à valider dans le dépôt.");
+                }
+
+                // Comme VS Code : si rien n'est indexé mais que des fichiers sont modifiés, indexer tout avant de valider.
+                await _gitService.StageAsync(".", token);
+            }
+
+            await _gitService.CommitAsync(message, token);
             CommitMessage = string.Empty;
-        }, ct);
+        }, "✓ Commit enregistré.", ct);
 
     public Task<bool> CheckoutBranchAsync(string branch, CancellationToken ct = default) =>
-        RunAndRefreshAsync(token => _gitService.CheckoutAsync(branch, token), ct);
+        RunAndRefreshAsync(token => _gitService.CheckoutAsync(branch, token), $"✓ Basculé sur la branche « {branch} ».", ct);
 
     public Task<bool> CreateBranchAsync(
         string branch,
         bool checkout = true,
         CancellationToken ct = default) =>
-        RunAndRefreshAsync(token => _gitService.CreateBranchAsync(branch, checkout, token), ct);
+        RunAndRefreshAsync(token => _gitService.CreateBranchAsync(branch, checkout, token), $"✓ Branche « {branch} » créée.", ct);
 
     public Task<bool> CreateNewBranchAsync(CancellationToken ct = default) =>
         RunAndRefreshAsync(async token =>
         {
-            await _gitService.CreateBranchAsync(NewBranchName.Trim(), checkout: true, token);
+            string name = NewBranchName.Trim();
+            await _gitService.CreateBranchAsync(name, checkout: true, token);
             NewBranchName = string.Empty;
-        }, ct);
+        }, "✓ Nouvelle branche créée et activée.", ct);
 
     public Task<bool> MergeBranchAsync(string branch, CancellationToken ct = default) =>
         ExecuteSafeAsync(async token =>
@@ -148,10 +178,12 @@ public sealed class GitPanelController : INotifyPropertyChanged
             await ReloadStateAsync(token);
             if (!result.Succeeded)
                 ErrorMessage = $"Conflit de fusion sur : {string.Join(", ", result.ConflictedFiles)}";
+            else
+                LastSuccessMessage = $"✓ Branche « {branch} » fusionnée.";
         }, ct);
 
     public Task<bool> AbortMergeAsync(CancellationToken ct = default) =>
-        RunAndRefreshAsync(_gitService.AbortMergeAsync, ct);
+        RunAndRefreshAsync(_gitService.AbortMergeAsync, "✓ Fusion annulée (Abort Merge).", ct);
 
     public Task<bool> LoadDiffAsync(string? path = null, CancellationToken ct = default) =>
         ExecuteSafeAsync(async token =>
@@ -160,18 +192,20 @@ public sealed class GitPanelController : INotifyPropertyChanged
         }, ct);
 
     public Task<bool> PushAsync(CancellationToken ct = default) =>
-        RunAndRefreshAsync(_gitService.PushAsync, ct);
+        RunAndRefreshAsync(_gitService.PushAsync, "✓ Push effectué vers le dépôt distant.", ct);
 
     public Task<bool> PullAsync(CancellationToken ct = default) =>
-        RunAndRefreshAsync(_gitService.PullAsync, ct);
+        RunAndRefreshAsync(_gitService.PullAsync, "✓ Pull effectué depuis le dépôt distant.", ct);
 
     private Task<bool> RunAndRefreshAsync(
         Func<CancellationToken, Task> operation,
+        string successMessage,
         CancellationToken ct) =>
         ExecuteSafeAsync(async token =>
         {
             await operation(token);
             await ReloadStateAsync(token);
+            LastSuccessMessage = successMessage;
         }, ct);
 
     private async Task ReloadStateAsync(CancellationToken ct)
@@ -204,6 +238,7 @@ public sealed class GitPanelController : INotifyPropertyChanged
     {
         IsBusy = true;
         ErrorMessage = null;
+        LastSuccessMessage = null;
 
         try
         {

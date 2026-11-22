@@ -855,6 +855,90 @@ public class GitServiceTests
         }
     }
 
+    [Fact]
+    public async Task DiffAsync_AndUnstageAsync_ShouldWorkBeforeFirstCommit()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            var service = CreateService(directory);
+            await service.InitAsync("main");
+
+            await File.WriteAllTextAsync(Path.Combine(directory, "init.txt"), "ligne 1\n");
+            await service.StageAsync("init.txt");
+
+            string diff = await service.DiffAsync("init.txt");
+            Assert.Contains("+ligne 1", diff);
+
+            await service.UnstageAsync("init.txt");
+            GitStatus status = await service.GetStatusAsync();
+            GitFileStatus entry = Assert.Single(status.Files, f => f.Path == "init.txt");
+            Assert.Equal(GitFileState.Untracked, entry.State);
+            Assert.False(entry.IsStaged);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task PushAsync_OnNewBranchWithoutUpstream_ShouldSetUpstreamAutomatically()
+    {
+        string directory = CreateTemporaryDirectory();
+        string remoteDirectory = Path.Combine(directory, "remote.git");
+        string repositoryDirectory = Path.Combine(directory, "repository");
+        Directory.CreateDirectory(repositoryDirectory);
+
+        try
+        {
+            await RunGitAsync(directory, "init", "--bare", "--initial-branch=main", remoteDirectory);
+            await InitializeRepositoryAsync(repositoryDirectory);
+            await RunGitAsync(repositoryDirectory, "remote", "add", "origin", remoteDirectory);
+            await RunGitAsync(repositoryDirectory, "push", "-u", "origin", "main");
+
+            var service = CreateService(repositoryDirectory);
+            await service.CreateBranchAsync("feature/new-branch", checkout: true);
+            await File.WriteAllTextAsync(Path.Combine(repositoryDirectory, "b.txt"), "branch content");
+            await service.StageAsync("b.txt");
+            await service.CommitAsync("Commit sur nouvelle branche");
+
+            await service.PushAsync();
+
+            string remoteMsg = await RunGitAsync(
+                remoteDirectory, "log", "-1", "--format=%s", "refs/heads/feature/new-branch");
+            Assert.Equal("Commit sur nouvelle branche", remoteMsg.Trim());
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    [Fact]
+    public async Task GetLogAsync_ShouldPreserveUtf8Accents()
+    {
+        string directory = CreateTemporaryDirectory();
+
+        try
+        {
+            await InitializeRepositoryAsync(directory);
+            await File.WriteAllTextAsync(Path.Combine(directory, "tracked.txt"), "contenu modifié");
+            await RunGitAsync(directory, "add", "tracked.txt");
+            await RunGitAsync(directory, "commit", "-m", "Ajout fonctionnalité accentuée : éàèç");
+
+            var service = CreateService(directory);
+            IReadOnlyList<GitCommitInfo> commits = await service.GetLogAsync(maxCount: 5);
+
+            Assert.Equal("Ajout fonctionnalité accentuée : éàèç", commits[0].Message);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
     private static GitService CreateService(string directory)
     {
         var workspace = new FakeWorkspaceService(

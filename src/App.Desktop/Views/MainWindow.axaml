@@ -1640,6 +1640,7 @@
                                                 Classes="tool"
                                                 Margin="4,0,0,0"
                                                 Command="{Binding Git.RefreshCommand}"
+                                                IsEnabled="{Binding !Git.Controller.IsBusy}"
                                                 ToolTip.Tip="Actualiser">
                                             <Path Classes="icon small"
                                                   Data="M20 11a8 8 0 1 0-2.3 5.7 M20 4v7h-7" />
@@ -1674,6 +1675,23 @@
                                                            TextWrapping="Wrap" />
                                             </Border>
 
+                                            <!-- Opération Git en cours / confirmation -->
+                                            <Border Classes="card"
+                                                    IsVisible="{Binding Git.Controller.IsBusy}">
+                                                <TextBlock Text="Opération Git en cours…"
+                                                           Foreground="{DynamicResource TextAccent}"
+                                                           FontSize="11" />
+                                            </Border>
+
+                                            <Border Classes="card"
+                                                    BorderBrush="#4ADE80"
+                                                    IsVisible="{Binding HasGitSuccess}">
+                                                <TextBlock Text="{Binding GitSuccessMessage}"
+                                                           Foreground="#4ADE80"
+                                                           FontSize="11"
+                                                           TextWrapping="Wrap" />
+                                            </Border>
+
                                             <StackPanel Spacing="8"
                                                         IsVisible="{Binding !IsGitRepoMissing}">
 
@@ -1695,15 +1713,18 @@
                                                 <Grid ColumnDefinitions="*,6,*" RowDefinitions="Auto,6,Auto">
                                                     <Button Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
                                                             Classes="secondary"
-                                                            Content="Tout indexer"
+                                                            Content="＋  Tout indexer"
+                                                            IsEnabled="{Binding !Git.Controller.IsBusy}"
                                                             Command="{Binding Git.StageAllCommand}" />
                                                     <Button Grid.Row="2" Grid.Column="0"
                                                             Classes="secondary"
                                                             Content="↓  Pull"
+                                                            IsEnabled="{Binding !Git.Controller.IsBusy}"
                                                             Command="{Binding Git.PullCommand}" />
                                                     <Button Grid.Row="2" Grid.Column="2"
                                                             Classes="secondary"
                                                             Content="↑  Push"
+                                                            IsEnabled="{Binding !Git.Controller.IsBusy}"
                                                             Command="{Binding Git.PushCommand}" />
                                                 </Grid>
 
@@ -1728,6 +1749,7 @@
                                                     <Button Grid.Column="1"
                                                             Classes="ghost"
                                                             Content="Abort Merge"
+                                                            IsVisible="{Binding Git.Controller.HasConflicts}"
                                                             Command="{Binding Git.AbortMergeCommand}" />
                                                 </Grid>
 
@@ -1741,6 +1763,7 @@
                                                             Classes="secondary"
                                                             HorizontalAlignment="Center"
                                                             Content="Créer"
+                                                            IsEnabled="{Binding !Git.Controller.IsBusy}"
                                                             Command="{Binding Git.CreateBranchCommand}"
                                                             Margin="6,0,0,0"
                                                             Padding="10,6" />
