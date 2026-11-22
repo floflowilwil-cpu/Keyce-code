@@ -303,6 +303,7 @@
 
             <MenuItem Header="_Affichage">
                 <MenuItem Header="Palette de commandes..." IsEnabled="False" />
+                <MenuItem Header="Paramètres..." Click="OnOpenSettings" />
                 <Separator />
                 <MenuItem Header="Explorateur"
                           Command="{Binding ShowPanelCommand}"
@@ -412,12 +413,13 @@
             <!-- Barre d'activité -->
             <Border Grid.Column="0" Background="{DynamicResource BgBar}">
                 <DockPanel>
-                    <Border DockPanel.Dock="Bottom" Height="48">
+                    <Button DockPanel.Dock="Bottom" Classes="act" Click="OnOpenSettings"
+                            ToolTip.Tip="Paramètres">
                         <Path Classes="icon"
                               HorizontalAlignment="Center"
                               VerticalAlignment="Center"
                               Data="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M12 4.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15z M12 2v2.5 M12 19.5V22 M2 12h2.5 M19.5 12H22 M4.9 4.9l1.8 1.8 M17.3 17.3l1.8 1.8 M4.9 19.1l1.8-1.8 M17.3 6.7l1.8-1.8" />
-                    </Border>
+                    </Button>
 
                     <StackPanel>
                         <Grid Height="48">
