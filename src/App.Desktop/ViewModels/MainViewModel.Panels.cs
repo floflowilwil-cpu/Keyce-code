@@ -787,6 +787,201 @@ public partial class MainWindowViewModel
     }
 
     // =====================================================================
+    //  Bouton ▶ : exécute le fichier actif (le langage est détecté automatiquement)
+    //  et « Déboguer » : compile le projet .NET du fichier actif puis lance le débogueur.
+    // =====================================================================
+
+    [RelayCommand]
+    private async Task RunActiveFile()
+    {
+        if (!IsExecutionIdle)
+            return;
+
+        RunPlan? plan = await PreparePlanAsync(path => _s.RunPlanner.PlanRun(path));
+        if (plan is null)
+            return;
+
+        await ExecutePlanAsync(plan);
+    }
+
+    [RelayCommand]
+    private async Task DebugActiveFile()
+    {
+        if (IsDebugging || !IsExecutionIdle)
+            return;
+
+        string? sourcePath = ActiveTab?.Path;
+
+        RunPlan? plan = await PreparePlanAsync(path => _s.RunPlanner.PlanDebugBuild(path));
+        if (plan is null || sourcePath is null)
+        {
+            DebugStatus = ExecutionStatus;
+            return;
+        }
+
+        DebugStatus = "Compilation du projet…";
+        int? exitCode = await ExecutePlanAsync(plan);
+        if (exitCode != 0)
+        {
+            DebugStatus = "La compilation a échoué : débogage annulé.";
+            return;
+        }
+
+        try
+        {
+            DebugProgram = _s.RunPlanner.FindDebugAssembly(sourcePath);
+        }
+        catch (Exception ex)
+        {
+            DebugStatus = ex.Message;
+            Log("Débogage : " + ex.Message);
+            return;
+        }
+
+        await StartDebug();
+    }
+
+    /// <summary>Vérifie le fichier actif (enregistré, sauvegardé) puis demande son plan au planificateur.</summary>
+    private async Task<RunPlan?> PreparePlanAsync(Func<string, RunPlan> planner)
+    {
+        DocumentTab? tab = ActiveTab;
+        if (tab is null)
+        {
+            ReportRunProblem("Ouvrez un fichier pour l'exécuter.");
+            return null;
+        }
+
+        string? path = tab.Path;
+        if (path is null)
+        {
+            ReportRunProblem("Enregistrez le fichier avant de l'exécuter.");
+            return null;
+        }
+
+        if (tab.IsDirty && !await SaveAsync(tab))
+            return null;
+
+        try
+        {
+            return planner(path);
+        }
+        catch (Exception ex)
+        {
+            ReportRunProblem(ex.Message);
+            return null;
+        }
+    }
+
+    private void ReportRunProblem(string message)
+    {
+        ExecutionStatus = message;
+        StatusMessage = message;
+        Log("Exécution : " + message);
+        ShowOutput();
+    }
+
+    /// <summary>Exécute les étapes du plan dans l'ordre. Retourne le code de sortie de la dernière étape lancée (null si le démarrage a échoué).</summary>
+    private async Task<int?> ExecutePlanAsync(RunPlan plan)
+    {
+        Log($"▶ {plan.DisplayName}");
+
+        int? exitCode = null;
+        int lastIndex = plan.Steps.Count - 1;
+        int stepIndex = 0;
+
+        try
+        {
+            for (; stepIndex <= lastIndex; stepIndex++)
+            {
+                RunStep step = plan.Steps[stepIndex];
+                Log(FormatCommand(step));
+
+                exitCode = await RunStepAsync(step);
+                if (exitCode != 0)
+                    break;
+            }
+        }
+        finally
+        {
+            _executionSessionId = null;
+            IsExecuting = false;
+            IsExecutionStarting = false;
+        }
+
+        if (exitCode is { } code)
+        {
+            bool compileFailed = code != 0 && stepIndex < lastIndex;
+            ExecutionStatus = compileFailed
+                ? $"La compilation a échoué (code de sortie : {code})."
+                : $"Programme terminé (code de sortie : {code}).";
+            Log(ExecutionStatus);
+        }
+
+        ShowOutput();
+        return exitCode;
+    }
+
+    /// <summary>Lance une étape et attend sa fin. Retourne son code de sortie, ou null si elle n'a pas pu démarrer.</summary>
+    private async Task<int?> RunStepAsync(RunStep step)
+    {
+        _pendingExecutionOutput.Clear();
+        IsExecutionStarting = true;
+        ExecutionStatus = step.Description + "…";
+
+        ExecutionSessionId id;
+        try
+        {
+            ExecutionStartOptions options = step.Options with { OutputCodePage = ExecutionOutputCodePage };
+            id = await _s.Execution.StartExecutionAsync(options);
+        }
+        catch (Exception ex)
+        {
+            _executionSessionId = null;
+            _pendingExecutionOutput.Clear();
+            IsExecutionStarting = false;
+            IsExecuting = false;
+            ExecutionStatus = "Échec du démarrage : " + ex.Message;
+            Log("Exécution : " + ex.Message);
+            ShowOutput();
+            return null;
+        }
+
+        _executionSessionId = id;
+        IsExecuting = true;
+        IsExecutionStarting = false;
+
+        foreach (ExecutionOutputEventArgs pending in _pendingExecutionOutput)
+        {
+            if (pending.SessionId == id)
+                AppendExecutionOutput(pending);
+        }
+
+        _pendingExecutionOutput.Clear();
+        ExecutionStatus = step.Description + " (en cours)…";
+        ShowOutput();
+
+        try
+        {
+            ExecutionResult result = await _s.Execution.WaitForExitAsync(id);
+            return result.ExitCode;
+        }
+        catch (Exception ex)
+        {
+            ExecutionStatus = "Erreur pendant l'exécution : " + ex.Message;
+            Log("Exécution : " + ex.Message);
+            return null;
+        }
+    }
+
+    private static string FormatCommand(RunStep step)
+    {
+        IEnumerable<string> arguments = step.Options.Arguments ?? Array.Empty<string>();
+        string joined = string.Join(' ', arguments.Select(a => a.Contains(' ') ? "\"" + a + "\"" : a));
+
+        return ("> " + step.Options.Executable + " " + joined).TrimEnd();
+    }
+
+    // =====================================================================
     //  Exécuter et déboguer (IDebugService, via NetCoreDbg)
     // =====================================================================
 
