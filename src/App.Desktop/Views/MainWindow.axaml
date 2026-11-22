@@ -376,8 +376,9 @@
                           Command="{Binding ShowBottomCommand}"
                           CommandParameter="2" />
                 <MenuItem Header="Exécuter une tâche..."
-                          Command="{Binding NotAvailableCommand}"
-                          CommandParameter="développeur 5|Exécuter une tâche" />
+                          Click="OnShowTasks" />
+                <MenuItem Header="Configurer les tâches..."
+                          Click="OnConfigureTasks" />
             </MenuItem>
 
             <MenuItem Header="_Aide">

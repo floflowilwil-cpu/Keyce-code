@@ -1015,6 +1015,80 @@ public partial class MainWindowViewModel
         }
     }
 
+    // =====================================================================
+    //  Terminal > Exécuter une tâche... (ITaskService)
+    // =====================================================================
+
+    /// <summary>Racine du dossier ouvert (null si aucun dossier n'est ouvert).</summary>
+    public string? WorkspaceRoot => _s.Workspace.Current?.RootPath;
+
+    /// <summary>Tâches du dossier ouvert. Retourne une liste vide (et signale l'erreur) si la configuration est invalide.</summary>
+    public IReadOnlyList<TaskDefinition> GetWorkspaceTasks()
+    {
+        if (WorkspaceRoot is not { } root)
+            return Array.Empty<TaskDefinition>();
+
+        try
+        {
+            return _s.Tasks.GetTasks(root);
+        }
+        catch (AppException ex)
+        {
+            ReportRunProblem(ex.Message);
+            return Array.Empty<TaskDefinition>();
+        }
+    }
+
+    /// <summary>Lance une tâche et affiche sa sortie dans l'onglet Sortie.</summary>
+    public async Task RunTaskAsync(TaskDefinition task)
+    {
+        if (WorkspaceRoot is not { } root)
+        {
+            ReportRunProblem("Ouvrez un dossier pour exécuter une tâche.");
+            return;
+        }
+
+        if (!IsExecutionIdle)
+        {
+            ReportRunProblem("Un programme est déjà en cours d'exécution : arrêtez-le avant de lancer une tâche.");
+            return;
+        }
+
+        RunPlan plan;
+        try
+        {
+            plan = _s.Tasks.CreatePlan(task, root);
+        }
+        catch (AppException ex)
+        {
+            ReportRunProblem(ex.Message);
+            return;
+        }
+
+        await ExecutePlanAsync(plan);
+    }
+
+    /// <summary>Crée .keyce/tasks.json si besoin et l'ouvre dans l'éditeur.</summary>
+    public async Task OpenTasksConfigAsync()
+    {
+        if (WorkspaceRoot is not { } root)
+        {
+            ReportRunProblem("Ouvrez un dossier pour configurer les tâches.");
+            return;
+        }
+
+        try
+        {
+            string path = _s.Tasks.EnsureConfigFile(root);
+            RefreshExplorer();
+            await OpenPathAsync(path);
+        }
+        catch (AppException ex)
+        {
+            ReportRunProblem(ex.Message);
+        }
+    }
+
     private static string FormatCommand(RunStep step)
     {
         IEnumerable<string> arguments = step.Options.Arguments ?? Array.Empty<string>();

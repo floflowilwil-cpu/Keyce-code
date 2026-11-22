@@ -34,6 +34,7 @@ public sealed class AppServices : IDisposable
         IExecutionService execution,
         IDebugService debugger,
         IRunPlanner runPlanner,
+        ITaskService tasks,
         LanguageClient languages,
         LanguageSyncService languageSync,
         SyntaxHighlighter highlighter,
@@ -54,6 +55,7 @@ public sealed class AppServices : IDisposable
         Execution = execution;
         Debugger = debugger;
         RunPlanner = runPlanner;
+        Tasks = tasks;
         _languageClient = languages;
         Languages = languages;
         _languageSync = languageSync;
@@ -75,6 +77,7 @@ public sealed class AppServices : IDisposable
     public IExecutionService Execution { get; }
     public IDebugService Debugger { get; }
     public IRunPlanner RunPlanner { get; }
+    public ITaskService Tasks { get; }
     public ILanguageClient Languages { get; }
 
     /// <summary>Coloration syntaxique (suit seule les documents de l'éditeur ; à passer au contrôle d'édition).</summary>
@@ -103,6 +106,7 @@ public sealed class AppServices : IDisposable
         var execution = new ExecutionService();
         var debugger = new App.Integrations.Debug.DebugService();
         var runPlanner = new RunPlanner();
+        var tasks = new App.Integrations.Tasks.TaskService();
         var languages = new LanguageClient();
         var languageSync = new LanguageSyncService(editor, languages, workspace);
         var highlighter = new SyntaxHighlighter(editor);
@@ -148,7 +152,7 @@ public sealed class AppServices : IDisposable
                 FallbackProviders: null));
 
         return new AppServices(
-            workspace, files, editor, editorCommands, git, terminal, execution, debugger, runPlanner,
+            workspace, files, editor, editorCommands, git, terminal, execution, debugger, runPlanner, tasks,
             languages, languageSync, highlighter, commandRegistry, extensions, extensionCatalog,
             gitHub, aiAssistant, httpClient);
     }
