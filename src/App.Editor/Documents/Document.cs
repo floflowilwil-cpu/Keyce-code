@@ -78,7 +78,7 @@ public sealed class Document
         LanguageId = LanguageIds.FromPath(path);
     }
 
-    public DocumentInfo ToInfo() => new(Id, Path, LanguageId, IsDirty);
+    public DocumentInfo ToInfo() => new(Id, Path, LanguageId, IsDirty, Version);
 
     public string GetTextForSave()
     {
@@ -141,6 +141,14 @@ public sealed class Document
     {
         ArgumentNullException.ThrowIfNull(edits);
         if (edits.Count == 0) return Array.Empty<TextEdit>();
+
+        // Une seule modification (cas d'un seul curseur) : même traitement que Apply, pour que les frappes
+        // consécutives restent regroupées en un seul pas d'annulation (Ctrl+Z annule le mot, pas une lettre).
+        if (edits.Count == 1)
+        {
+            var single = Apply(edits[0]);
+            return single is null ? Array.Empty<TextEdit>() : new[] { single };
+        }
 
         var prepared = new List<(int Start, int End, string NewText)>(edits.Count);
         foreach (var edit in edits)

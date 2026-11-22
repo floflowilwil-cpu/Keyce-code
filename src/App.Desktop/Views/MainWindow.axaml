@@ -1530,18 +1530,18 @@
                                                         IsEnabled="{Binding Git.Controller.CommitMessage,
                                                                     Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
-                                                <Grid ColumnDefinitions="*,6,*,6,*">
-                                                    <Button Grid.Column="0"
+                                                <Grid ColumnDefinitions="*,6,*" RowDefinitions="Auto,6,Auto">
+                                                    <Button Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
                                                             Classes="secondary"
-                                                            Content="Tout indexer"
+                                                            Content="＋  Tout indexer"
                                                             Command="{Binding Git.StageAllCommand}" />
-                                                    <Button Grid.Column="2"
+                                                    <Button Grid.Row="2" Grid.Column="0"
                                                             Classes="secondary"
-                                                            Content="Pull"
+                                                            Content="↓  Pull"
                                                             Command="{Binding Git.PullCommand}" />
-                                                    <Button Grid.Column="4"
+                                                    <Button Grid.Row="2" Grid.Column="2"
                                                             Classes="secondary"
-                                                            Content="Push"
+                                                            Content="↑  Push"
                                                             Command="{Binding Git.PushCommand}" />
                                                 </Grid>
 
