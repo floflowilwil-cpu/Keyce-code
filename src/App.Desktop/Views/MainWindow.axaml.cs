@@ -70,7 +70,7 @@ public partial class MainWindow : Window
         vm.PropertyChanged += OnViewModelPropertyChanged;
         vm.ConflictDetected += OnConflictDetected;
 
-        CodeEditor.Attach(vm.EditorService, vm.EditorCommands);
+        CodeEditor.Attach(vm.EditorService, vm.EditorCommands, vm.SyntaxHighlighter);
         CodeEditor.DocumentId = vm.ActiveTab?.Id;
         CodeEditor.CaretChanged += OnEditorCaretChanged;
         CodeEditor.SaveRequested += OnEditorSaveRequested;
@@ -325,6 +325,24 @@ public partial class MainWindow : Window
 
         bool shift =
             e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+
+        // Annuler / rétablir : fonctionne aussi quand le focus n'est pas dans l'éditeur (explorateur, onglets,
+        // après un clic dans un menu). Quand l'éditeur a le focus, c'est lui qui traite la touche (curseur et
+        // défilement compris) ; dans une zone de texte (recherche, message de commit), elle garde son propre Ctrl+Z.
+        if (ctrl && (e.Key == Key.Z || e.Key == Key.Y) && _vm.HasFile)
+        {
+            var focused = FocusManager?.GetFocusedElement();
+            if (focused is not TextBox && !ReferenceEquals(focused, CodeEditor))
+            {
+                if (e.Key == Key.Y || shift)
+                    _vm.RedoCommand.Execute(null);
+                else
+                    _vm.UndoCommand.Execute(null);
+
+                e.Handled = true;
+                return;
+            }
+        }
 
         if (ctrl && e.Key == Key.F)
         {
