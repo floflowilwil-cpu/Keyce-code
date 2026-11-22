@@ -433,6 +433,17 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnOpenLocalProjectClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: LocalProjectItem project } &&
+            _vm is not null)
+        {
+            _vm.OpenLocalProjectCommand.Execute(project.FullPath);
+        }
+    }
+
     private async void OnNodeSelected(
         object? sender,
         SelectionChangedEventArgs e)

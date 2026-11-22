@@ -540,6 +540,15 @@
                                 </Button>
                             </Grid>
 
+                            <Button DockPanel.Dock="Top"
+                                    Content="Ouvrir un autre projet / dossier..."
+                                    Classes="secondary"
+                                    Margin="12,0,12,6"
+                                    Padding="8,5"
+                                    FontSize="11"
+                                    Click="OnOpenFolder"
+                                    IsVisible="{Binding HasFolder}" />
+
                             <StackPanel DockPanel.Dock="Top"
                                         Margin="16,16"
                                         Spacing="10"
@@ -1428,6 +1437,64 @@
                                        Classes="section"
                                        Text="CONTRÔLE DE CODE SOURCE (GIT &amp; GITHUB)"
                                        Margin="12,8,12,6" />
+
+                            <StackPanel DockPanel.Dock="Top"
+                                        Margin="12,0,12,6"
+                                        Spacing="6">
+                                <Grid ColumnDefinitions="*,6,*">
+                                    <Button Grid.Column="0"
+                                            Content="Ouvrir un autre projet..."
+                                            Classes="secondary"
+                                            FontSize="11"
+                                            Padding="6,5"
+                                            Click="OnOpenFolder" />
+                                    <Button Grid.Column="2"
+                                            Content="Mes projets sur ce PC"
+                                            Classes="secondary"
+                                            FontSize="11"
+                                            Padding="6,5"
+                                            Command="{Binding ToggleProjectsListCommand}" />
+                                </Grid>
+
+                                <Border Classes="card"
+                                        Padding="8"
+                                        MaxHeight="180"
+                                        IsVisible="{Binding IsProjectsListVisible}">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Top"
+                                                   Text="{Binding ProjectsSummary}"
+                                                   FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextAccent}"
+                                                   Margin="0,0,0,4" />
+                                        <ScrollViewer>
+                                            <ItemsControl ItemsSource="{Binding LocalProjects}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate DataType="vm:LocalProjectItem">
+                                                        <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                                                            <StackPanel Grid.Column="0">
+                                                                <TextBlock Text="{Binding Name}"
+                                                                           FontSize="12"
+                                                                           FontWeight="SemiBold"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Foreground="{DynamicResource TextMain}" />
+                                                                <TextBlock Text="{Binding Category}"
+                                                                           FontSize="10"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Foreground="{DynamicResource TextDim}" />
+                                                            </StackPanel>
+                                                            <Button Grid.Column="1"
+                                                                    Classes="ghost"
+                                                                    Content="Ouvrir"
+                                                                    Click="OnOpenLocalProjectClick" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                    </DockPanel>
+                                </Border>
+                            </StackPanel>
 
                             <Grid>
                                 <Border Classes="card"
