@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using App.Application.Git;
-using App.Application.Workspace;
+using App.Application.Workspaces;
 using App.Core.Contracts;
 using App.Editor;
 using App.Editor.Editing;

@@ -49,7 +49,9 @@ src/
 tests/
   App.Core.Tests/
   App.Editor.Tests/
+  App.Extensions.Tests/
   App.Integration.Tests/
+  App.Languages.Sandbox/   Application console de vérification manuelle (langages)
 ```
 
 ## Prérequis
