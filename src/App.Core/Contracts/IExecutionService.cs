@@ -30,6 +30,15 @@ public interface IExecutionService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Envoie du texte sur l'entrée standard d'un programme en cours d'exécution
+    /// (par exemple pour répondre à Console.ReadLine).
+    /// </summary>
+    Task SendInputAsync(
+        ExecutionSessionId id,
+        string text,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Se déclenche lorsqu'un processus produit des données.
     /// </summary>
     event EventHandler<ExecutionOutputEventArgs>? OutputReceived;

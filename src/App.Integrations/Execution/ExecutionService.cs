@@ -69,6 +69,11 @@ public sealed class ExecutionService : IExecutionService
                 exception);
         }
 
+        // UTF-8 sans BOM : un BOM envoyé sur l'entrée standard polluerait la première saisie.
+        Encoding inputEncoding = options.OutputCodePage == 65001
+            ? new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)
+            : outputEncoding;
+
         string workingDirectory =
             options.WorkingDirectory is null
                 ? Environment.CurrentDirectory
@@ -87,6 +92,8 @@ public sealed class ExecutionService : IExecutionService
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = true,
+            StandardInputEncoding = inputEncoding,
             StandardOutputEncoding = outputEncoding,
             StandardErrorEncoding = outputEncoding,
             CreateNoWindow = true
@@ -230,6 +237,29 @@ public sealed class ExecutionService : IExecutionService
         }
 
         await GetOrStartCompletionTask(id, session).WaitAsync(ct);
+    }
+
+    public async Task SendInputAsync(
+        ExecutionSessionId id,
+        string text,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ct.ThrowIfCancellationRequested();
+
+        var session = GetSession(id);
+
+        try
+        {
+            await session.Process.StandardInput.WriteAsync(text.AsMemory(), ct);
+            await session.Process.StandardInput.FlushAsync(ct);
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+        {
+            throw new InvalidOperationException(
+                "Le programme n'accepte plus de saisie (il est terminé).",
+                ex);
+        }
     }
 
     public async Task<ExecutionResult> WaitForExitAsync(
