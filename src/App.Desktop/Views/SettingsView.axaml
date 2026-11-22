@@ -5,7 +5,7 @@
              x:DataType="vm:SettingsViewModel">
   <Grid RowDefinitions="Auto,*">
     <Border Grid.Row="0" Padding="24,14,24,10">
-      <TextBox Text="{Binding SearchText, Mode=TwoWay}" Watermark="Rechercher dans les paramètres" MaxWidth="900"/>
+		<TextBox Text="{Binding SearchText, Mode=TwoWay}" PlaceholderText="Rechercher dans les paramètres" MaxWidth="900"/>
     </Border>
 
     <Grid Grid.Row="1" ColumnDefinitions="250,*">

@@ -135,21 +135,52 @@ public partial class MainWindow
             app.RequestedThemeVariant =
                 _settings.Theme == "Light" ? ThemeVariant.Light : ThemeVariant.Dark;
         }
-        EditorBox.FontSize = Math.Clamp(_settings.EditorFontSize, 10, 28);
+        //EditorBox.FontSize = Math.Clamp(_settings.EditorFontSize, 10, 28);
     }
+
+    private global::App.Core.Settings.JsonSettingsService? _svc;
 
     private async void OnOpenSettings(object? sender, RoutedEventArgs e)
     {
         // Le thème peut avoir été changé par le menu : on repart de l'état réel.
         _settings.Theme = ActualThemeVariant == ThemeVariant.Light ? "Light" : "Dark";
 
-        var dlg = new SettingsWindow(_settings);
-        dlg.SettingsChanged += (_, _) =>
+        if (_svc is null)
         {
-            ApplySettings();
-            _settings.Save();
-            if (_vm is not null) _vm.StatusMessage = "Paramètres enregistrés";
+            _svc = new global::App.Core.Settings.JsonSettingsService();
+            _svc.Changed += (key, value) =>
+            {
+                if (key == "workbench.colorTheme")
+                    _settings.Theme = value;
+                else if (key == "editor.fontSize" &&
+                         double.TryParse(value, System.Globalization.NumberStyles.Any,
+                             System.Globalization.CultureInfo.InvariantCulture, out var size))
+                    _settings.EditorFontSize = (int)size;
+                else
+                    return;
+
+                ApplySettings();
+                _settings.Save();
+                if (_vm is not null) _vm.StatusMessage = "Paramètres enregistrés";
+            };
+        }
+
+        // Aligne la page sur les réglages actuels
+        _svc.Set("workbench.colorTheme", _settings.Theme);
+        _svc.Set("editor.fontSize",
+            _settings.EditorFontSize.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+        var win = new Window
+        {
+            Title = "Paramètres",
+            Width = 1000,
+            Height = 700,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new SettingsView
+            {
+                DataContext = new global::App.Desktop.ViewModels.SettingsViewModel(_svc)
+            }
         };
-        await dlg.ShowDialog(this);
+        await win.ShowDialog(this);
     }
 }

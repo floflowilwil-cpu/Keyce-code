@@ -3,11 +3,12 @@
         xmlns:vm="using:App.Desktop.ViewModels"
         xmlns:core="using:App.Core.Models"
         xmlns:terminal="using:SvcSystems.UI.Terminal"
+        xmlns:ctl="using:App.Desktop.Controls"
         x:Class="App.Desktop.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/logo.ico"
         Title="Keyce Code"
-        Width="1280"
+        Width="1360"
         Height="780"
         MinWidth="800"
         MinHeight="500"
@@ -125,6 +126,98 @@
             <Setter Property="CornerRadius" Value="0" />
         </Style>
 
+        <!-- Boutons des panneaux : primary (action principale), secondary, danger, tool (icône), ghost (lien) -->
+        <Style Selector="Button.primary, Button.secondary, Button.danger">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="{DynamicResource Primary}" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Accent}" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.primary:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource BgHover}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}" />
+        </Style>
+
+        <Style Selector="Button.secondary">
+            <Setter Property="Background" Value="{DynamicResource BgHover}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMain}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="Padding" Value="6,7" />
+        </Style>
+        <Style Selector="Button.secondary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Line}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMain}" />
+        </Style>
+        <Style Selector="Button.secondary:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextDim}" />
+        </Style>
+
+        <Style Selector="Button.danger">
+            <Setter Property="Background" Value="#B91C1C" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#DC2626" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+
+        <Style Selector="Button.tool">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="5" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Margin" Value="2,0,0,0" />
+        </Style>
+        <Style Selector="Button.tool:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource BgHover}" />
+        </Style>
+        <Style Selector="Button.tool:disabled">
+            <Setter Property="Opacity" Value="0.35" />
+        </Style>
+
+        <Style Selector="Button.ghost">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextAccent}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Padding" Value="8,3" />
+        </Style>
+        <Style Selector="Button.ghost:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource BgHover}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextAccent}" />
+        </Style>
+
+        <Style Selector="TextBlock.section">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextAccent}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource BgHover}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="10,8" />
+        </Style>
+
         <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
             <Setter Property="Background" Value="{DynamicResource BgMain}" />
             <Setter Property="BorderBrush" Value="Transparent" />
@@ -147,6 +240,12 @@
                 <MenuItem Header="Nouveau fichier"
                           InputGesture="Ctrl+N"
                           Command="{Binding NewFileCommand}" />
+                <MenuItem Header="Nouveau dossier..."
+                          Click="OnNewFolderHere" />
+                <Separator />
+                <MenuItem Header="Ouvrir un fichier..."
+                          InputGesture="Ctrl+O"
+                          Click="OnOpenFile" />
                 <MenuItem Header="Ouvrir un dossier..."
                           Click="OnOpenFolder" />
                 <Separator />
@@ -210,9 +309,10 @@
                 <MenuItem Header="Recherche"
                           Command="{Binding ShowPanelCommand}"
                           CommandParameter="1" />
-                <MenuItem Header="Contrôle de code source"
-                          Command="{Binding ShowPanelCommand}"
-                          CommandParameter="2" />
+                <MenuItem Header="Contrôle de code source (panneau droit)"
+                          Command="{Binding FocusRightGitCommand}" />
+                <MenuItem Header="Assistant IA (panneau droit)"
+                          Command="{Binding FocusRightAiCommand}" />
                 <MenuItem Header="Exécuter et déboguer"
                           Command="{Binding ShowPanelCommand}"
                           CommandParameter="3" />
@@ -236,6 +336,8 @@
                 <MenuItem Header="Afficher / masquer la barre latérale"
                           InputGesture="Ctrl+B"
                           Command="{Binding ToggleSidebarCommand}" />
+                <MenuItem Header="Afficher / masquer le panneau droit (IA &amp; Git)"
+                          Command="{Binding ToggleRightPanelCommand}" />
                 <MenuItem Header="Thème clair / sombre"
                           Click="OnToggleTheme" />
             </MenuItem>
@@ -304,42 +406,13 @@
         </Border>
 
         <Grid x:Name="RootGrid"
-              ColumnDefinitions="52,260,4,*">
+              ColumnDefinitions="52,240,4,*,4,350">
 
             <!-- Barre d'activité -->
             <Border Grid.Column="0" Background="{DynamicResource BgBar}">
                 <DockPanel>
-                    <Button DockPanel.Dock="Bottom" Classes="act" ToolTip.Tip="Gérer">
-                        <Button.Flyout>
-                            <MenuFlyout Placement="RightEdgeAlignedBottom">
-                                <MenuItem Header="Palette de commandes..." Click="OnPaletteSoon" />
-                                <Separator />
-                                <MenuItem Header="Profils" Click="OnProfilesSoon" />
-                                <MenuItem Click="OnOpenSettings">
-                                    <MenuItem.Header>
-                                        <Grid ColumnDefinitions="*,Auto" MinWidth="240">
-                                            <TextBlock Text="Paramètres" />
-                                            <TextBlock Grid.Column="1" Text="Ctrl+," Opacity="0.6" Margin="24,0,0,0" />
-                                        </Grid>
-                                    </MenuItem.Header>
-                                </MenuItem>
-                                <MenuItem Header="Extensions" Click="OnShowExtensions" />
-                                <MenuItem Header="Raccourcis clavier" Click="OnShortcuts" />
-                                <MenuItem Header="Extraits de code (snippets)" Click="OnSnippetsSoon" />
-                                <MenuItem Header="Tâches" Click="OnTasksSoon" />
-                                <MenuItem Header="Thèmes">
-                                    <MenuItem Header="Sombre" Click="OnThemeDark" />
-                                    <MenuItem Header="Clair" Click="OnThemeLight" />
-                                </MenuItem>
-                                <MenuItem Header="Densité de l'affichage">
-                                    <MenuItem Header="Normale" Click="OnDensityNormal" />
-                                    <MenuItem Header="Compacte" Click="OnDensityCompact" />
-                                </MenuItem>
-                                <Separator />
-                                <MenuItem Header="Sauvegarde et synchronisation des paramètres..." Click="OnBackupSyncSoon" />
-                                <MenuItem Header="Rechercher les mises à jour..." Click="OnCheckUpdatesSoon" />
-                            </MenuFlyout>
-                        </Button.Flyout>
+                    <Button DockPanel.Dock="Bottom" Classes="act" Click="OnOpenSettings"
+                            ToolTip.Tip="Paramètres">
                         <Path Classes="icon"
                               HorizontalAlignment="Center"
                               VerticalAlignment="Center"
@@ -379,12 +452,12 @@
                             <Border Width="2"
                                     HorizontalAlignment="Left"
                                     Background="{DynamicResource Accent}"
-                                    IsVisible="{Binding IsGitActive}" />
+                                    IsVisible="{Binding IsRightGitHighlighted}" />
                             <Button Classes="act"
-                                    Command="{Binding ShowPanelCommand}"
-                                    CommandParameter="2">
+                                    Command="{Binding FocusRightGitCommand}"
+                                    ToolTip.Tip="Contrôle de code source (Git à droite)">
                                 <Path Classes="icon"
-                                      Classes.active="{Binding IsGitActive}"
+                                      Classes.active="{Binding IsRightGitHighlighted}"
                                       Data="M6 2.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M6 16.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M18 6.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M6 7.5v9 M18 11.5c0 3.5-12 1.5-12 5" />
                             </Button>
                         </Grid>
@@ -436,13 +509,38 @@
 
                         <!-- Explorateur -->
                         <DockPanel IsVisible="{Binding IsExplorerActive}">
-                            <TextBlock DockPanel.Dock="Top"
-                                       Text="{Binding FolderName}"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextMain}"
-                                       Margin="16,4,0,6"
-                                       IsVisible="{Binding HasFolder}" />
+                            <Grid DockPanel.Dock="Top"
+                                  ColumnDefinitions="*,Auto,Auto,Auto"
+                                  Margin="16,0,8,6"
+                                  IsVisible="{Binding HasFolder}">
+                                <TextBlock Text="{Binding FolderName}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource TextMain}"
+                                           VerticalAlignment="Center" />
+                                <Button Grid.Column="1"
+                                        Classes="tool"
+                                        Click="OnNewFileHere"
+                                        ToolTip.Tip="Nouveau fichier">
+                                    <Path Classes="icon small"
+                                          Data="M6 2h8l4 4v16H6z M14 2v4h4 M12 11v6 M9 14h6" />
+                                </Button>
+                                <Button Grid.Column="2"
+                                        Classes="tool"
+                                        Click="OnNewFolderHere"
+                                        ToolTip.Tip="Nouveau dossier">
+                                    <Path Classes="icon small"
+                                          Data="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M12 11v6 M9 14h6" />
+                                </Button>
+                                <Button Grid.Column="3"
+                                        Classes="tool"
+                                        Click="OnRefreshExplorer"
+                                        ToolTip.Tip="Actualiser">
+                                    <Path Classes="icon small"
+                                          Data="M20 11a8 8 0 1 0-2.3 5.7 M20 4v7h-7" />
+                                </Button>
+                            </Grid>
 
                             <StackPanel DockPanel.Dock="Top"
                                         Margin="16,16"
@@ -452,11 +550,14 @@
                                            Foreground="{DynamicResource TextMuted}"
                                            FontSize="12" />
                                 <Button Content="Ouvrir un dossier"
-                                        Click="OnOpenFolder"
-                                        HorizontalAlignment="Stretch"
-                                        HorizontalContentAlignment="Center"
-                                        Background="{DynamicResource Primary}"
-                                        Foreground="White" />
+                                        Classes="primary"
+                                        Click="OnOpenFolder" />
+                                <Button Content="Ouvrir un fichier"
+                                        Classes="secondary"
+                                        Click="OnOpenFile" />
+                                <Button Content="Nouveau dossier"
+                                        Classes="secondary"
+                                        Click="OnNewFolderHere" />
                             </StackPanel>
 
                             <TreeView ItemsSource="{Binding Nodes}"
@@ -464,6 +565,19 @@
                                       Margin="4,0"
                                       SelectionChanged="OnNodeSelected"
                                       IsVisible="{Binding HasFolder}">
+                                <TreeView.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Nouveau fichier..."
+                                                  Click="OnNewFileHere" />
+                                        <MenuItem Header="Nouveau dossier..."
+                                                  Click="OnNewFolderHere" />
+                                        <Separator />
+                                        <MenuItem Header="Actualiser"
+                                                  Click="OnRefreshExplorer" />
+                                        <MenuItem Header="Supprimer"
+                                                  Click="OnDeleteSelected" />
+                                    </ContextMenu>
+                                </TreeView.ContextMenu>
                                 <TreeView.ItemTemplate>
                                     <TreeDataTemplate DataType="vm:FileNode"
                                                       ItemsSource="{Binding Children}">
@@ -520,325 +634,313 @@
                             </ListBox>
                         </DockPanel>
 
-                        <!-- Git -->
-                        <DockPanel IsVisible="{Binding IsGitActive}">
-                            <StackPanel DockPanel.Dock="Top"
-                                        Margin="12,6,12,8"
-                                        Spacing="10">
-
-                                <Border Background="{DynamicResource BgHover}"
-                                        CornerRadius="6"
-                                        Padding="10,8">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <TextBlock Text="Branche"
-                                                   FontSize="12"
-                                                   Foreground="{DynamicResource TextDim}"
-                                                   VerticalAlignment="Center" />
-                                        <TextBlock Text="{Binding Git.Controller.CurrentBranch}"
-                                                   FontSize="13"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextAccent}"
-                                                   VerticalAlignment="Center" />
-                                    </StackPanel>
-                                </Border>
-
-                                <Border Background="{DynamicResource BgHover}"
-                                        CornerRadius="6"
-                                        Padding="12"
-                                        IsVisible="{Binding IsGitRepoMissing}">
-                                    <StackPanel Spacing="10">
-                                        <TextBlock Text="{Binding GitMessage}"
-                                                   TextWrapping="Wrap"
-                                                   FontSize="12"
-                                                   Foreground="{DynamicResource TextMain}" />
-                                        <Button Content="Initialiser un dépôt Git"
-                                                Command="{Binding InitGitCommand}"
-                                                HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Center"
-                                                Padding="10,8"
-                                                Background="{DynamicResource Primary}"
-                                                Foreground="White" />
-                                    </StackPanel>
-                                </Border>
-
-                                <TextBlock Text="{Binding GitMessage}"
-                                           Foreground="#F87171"
-                                           FontSize="12"
+                        <!-- Git (affiché dans le panneau droit) -->
+                        <Border Classes="card"
+                                Margin="12,8"
+                                Padding="12"
+                                VerticalAlignment="Top"
+                                IsVisible="{Binding IsGitActive}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Le contrôle de code source (Git &amp; GitHub) se trouve directement à droite de l'interface."
                                            TextWrapping="Wrap"
-                                           IsVisible="{Binding HasGitError}" />
-
-                                <StackPanel Spacing="8"
-                                            IsVisible="{Binding !IsGitRepoMissing}">
-                                    <TextBox Text="{Binding Git.Controller.CommitMessage}"
-                                             PlaceholderText="Message de commit"
-                                             AcceptsReturn="True"
-                                             TextWrapping="Wrap"
-                                             Height="70"
-                                             Background="{DynamicResource BgMain}"
-                                             Foreground="{DynamicResource TextMain}" />
-
-                                    <Button Content="Valider (commit)"
-                                            Command="{Binding Git.CommitCommand}"
-                                            HorizontalAlignment="Stretch"
-                                            HorizontalContentAlignment="Center"
-                                            Padding="10,8"
-                                            Background="{DynamicResource Primary}"
-                                            Foreground="White" />
-
-                                    <UniformGrid Columns="2">
-                                        <Button Content="Tout indexer"
-                                                Command="{Binding Git.StageAllCommand}"
-                                                Margin="0,0,3,6"
-                                                Padding="6,7" />
-                                        <Button Content="Actualiser"
-                                                Command="{Binding Git.RefreshCommand}"
-                                                Margin="3,0,0,6"
-                                                Padding="6,7" />
-                                        <Button Content="Pull"
-                                                Command="{Binding Git.PullCommand}"
-                                                Margin="0,0,3,0"
-                                                Padding="6,7" />
-                                        <Button Content="Push"
-                                                Command="{Binding Git.PushCommand}"
-                                                Margin="3,0,0,0"
-                                                Padding="6,7" />
-                                    </UniformGrid>
-                                </StackPanel>
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextMain}" />
+                                <Button Content="Afficher Git &amp; GitHub à droite"
+                                        Classes="primary"
+                                        Command="{Binding FocusRightGitCommand}" />
                             </StackPanel>
-
-                            <ScrollViewer IsVisible="{Binding !IsGitRepoMissing}">
-                                <StackPanel Margin="12,0,8,8" Spacing="2">
-                                    <TextBlock Text="CHANGEMENTS INDEXÉS"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource TextAccent}"
-                                               Margin="0,6,0,2" />
-
-                                    <ItemsControl ItemsSource="{Binding Git.Controller.StagedFiles}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate DataType="core:GitFileStatus">
-                                                <Grid ColumnDefinitions="Auto,*,Auto"
-                                                      Margin="0,2">
-                                                    <TextBlock Grid.Column="0"
-                                                               Text="{Binding State}"
-                                                               FontSize="10"
-                                                               Width="70"
-                                                               Foreground="{DynamicResource TextDim}"
-                                                               VerticalAlignment="Center" />
-                                                    <TextBlock Grid.Column="1"
-                                                               Text="{Binding Path}"
-                                                               FontSize="12"
-                                                               TextTrimming="CharacterEllipsis"
-                                                               Foreground="{DynamicResource TextMain}"
-                                                               VerticalAlignment="Center"
-                                                               Cursor="Hand"
-                                                               PointerPressed="OnGitFilePressed" />
-                                                    <Button Grid.Column="2"
-                                                            Content="Retirer"
-                                                            Click="OnGitUnstageClick"
-                                                            Background="Transparent"
-                                                            Foreground="{DynamicResource TextAccent}"
-                                                            Padding="8,2"
-                                                            FontSize="11" />
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-
-                                    <TextBlock Text="CHANGEMENTS"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource TextAccent}"
-                                               Margin="0,10,0,2" />
-
-                                    <ItemsControl ItemsSource="{Binding Git.Controller.UnstagedFiles}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate DataType="core:GitFileStatus">
-                                                <Grid ColumnDefinitions="Auto,*,Auto"
-                                                      Margin="0,2">
-                                                    <TextBlock Grid.Column="0"
-                                                               Text="{Binding State}"
-                                                               FontSize="10"
-                                                               Width="70"
-                                                               Foreground="{DynamicResource TextDim}"
-                                                               VerticalAlignment="Center" />
-                                                    <TextBlock Grid.Column="1"
-                                                               Text="{Binding Path}"
-                                                               FontSize="12"
-                                                               TextTrimming="CharacterEllipsis"
-                                                               Foreground="{DynamicResource TextMain}"
-                                                               VerticalAlignment="Center"
-                                                               Cursor="Hand"
-                                                               PointerPressed="OnGitFilePressed" />
-                                                    <Button Grid.Column="2"
-                                                            Content="Indexer"
-                                                            Click="OnGitStageClick"
-                                                            Background="Transparent"
-                                                            Foreground="{DynamicResource TextAccent}"
-                                                            Padding="8,2"
-                                                            FontSize="11" />
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </ScrollViewer>
-                        </DockPanel>
+                        </Border>
 
                         <!-- Exécuter et déboguer -->
                         <ScrollViewer IsVisible="{Binding IsRunActive}">
-                            <StackPanel Margin="12,4,12,12" Spacing="10">
-                                <TextBlock Text="Programme .NET compilé (.dll)"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextMuted}" />
+                            <StackPanel Margin="12,2,12,12" Spacing="10">
 
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBox Text="{Binding DebugProgram}"
-                                             PlaceholderText="bin\Debug\net10.0\MonApp.dll"
-                                             Background="{DynamicResource BgMain}"
-                                             Foreground="{DynamicResource TextMain}" />
-                                    <Button Grid.Column="1"
-                                            Content="Parcourir"
-                                            Click="OnBrowseProgram"
-                                            Margin="6,0,0,0" />
+                                <TextBlock Classes="section"
+                                           Text="PROGRAMME À DÉBOGUER" />
+
+                                <TextBox Text="{Binding DebugProgram}"
+                                         PlaceholderText="bin\Debug\net10.0\MonApp.dll"
+                                         Padding="8,7"
+                                         IsEnabled="{Binding IsDebugIdle}"
+                                         Background="{DynamicResource BgMain}"
+                                         Foreground="{DynamicResource TextMain}" />
+
+                                <Button Content="Parcourir un fichier .dll..."
+                                        Classes="secondary"
+                                        Click="OnBrowseProgram"
+                                        IsEnabled="{Binding IsDebugIdle}" />
+
+                                <!-- Démarrer / arrêter -->
+                                <Button Content="▶  Démarrer le débogage"
+                                        Classes="primary"
+                                        Command="{Binding StartDebugCommand}"
+                                        IsVisible="{Binding IsDebugIdle}" />
+                                <Button Content="■  Arrêter la session"
+                                        Classes="danger"
+                                        Command="{Binding StopDebugCommand}"
+                                        IsVisible="{Binding IsDebugging}" />
+
+                                <!-- Pas à pas -->
+                                <Grid ColumnDefinitions="*,6,*"
+                                      RowDefinitions="Auto,6,Auto">
+                                    <Button Grid.Row="0" Grid.Column="0"
+                                            Classes="secondary"
+                                            Content="Continuer"
+                                            Command="{Binding DebugContinueCommand}"
+                                            IsEnabled="{Binding IsDebugging}" />
+                                    <Button Grid.Row="0" Grid.Column="2"
+                                            Classes="secondary"
+                                            Content="Pas à pas"
+                                            Command="{Binding DebugOverCommand}"
+                                            IsEnabled="{Binding IsDebugging}" />
+                                    <Button Grid.Row="2" Grid.Column="0"
+                                            Classes="secondary"
+                                            Content="Entrer"
+                                            Command="{Binding DebugIntoCommand}"
+                                            IsEnabled="{Binding IsDebugging}" />
+                                    <Button Grid.Row="2" Grid.Column="2"
+                                            Classes="secondary"
+                                            Content="Sortir"
+                                            Command="{Binding DebugOutCommand}"
+                                            IsEnabled="{Binding IsDebugging}" />
                                 </Grid>
 
-                                <UniformGrid Columns="2">
-                                    <Button Content="Démarrer"
-                                            Command="{Binding StartDebugCommand}"
-                                            IsEnabled="{Binding IsDebugIdle}"
-                                            Margin="0,0,3,6"
-                                            Padding="6,7"
-                                            Background="{DynamicResource Primary}"
-                                            Foreground="White" />
-                                    <Button Content="Arrêter"
-                                            Command="{Binding StopDebugCommand}"
-                                            IsEnabled="{Binding IsDebugging}"
-                                            Margin="3,0,0,6"
-                                            Padding="6,7" />
-                                    <Button Content="Continuer"
-                                            Command="{Binding DebugContinueCommand}"
-                                            IsEnabled="{Binding IsDebugging}"
-                                            Margin="0,0,3,6"
-                                            Padding="6,7" />
-                                    <Button Content="Pas à pas"
-                                            Command="{Binding DebugOverCommand}"
-                                            IsEnabled="{Binding IsDebugging}"
-                                            Margin="3,0,0,6"
-                                            Padding="6,7" />
-                                    <Button Content="Entrer"
-                                            Command="{Binding DebugIntoCommand}"
-                                            IsEnabled="{Binding IsDebugging}"
-                                            Margin="0,0,3,0"
-                                            Padding="6,7" />
-                                    <Button Content="Sortir"
-                                            Command="{Binding DebugOutCommand}"
-                                            IsEnabled="{Binding IsDebugging}"
-                                            Margin="3,0,0,0"
-                                            Padding="6,7" />
-                                </UniformGrid>
-
-                                <Border Background="{DynamicResource BgHover}"
-                                        CornerRadius="6"
-                                        Padding="10,8">
-                                    <TextBlock Text="{Binding DebugStatus}"
-                                               TextWrapping="Wrap"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource TextMain}" />
+                                <!-- État de la session -->
+                                <Border Classes="card"
+                                        BorderBrush="{DynamicResource Accent}"
+                                        BorderThickness="3,0,0,0">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Classes="section"
+                                                   Text="ÉTAT" />
+                                        <TextBlock Text="{Binding DebugStatus}"
+                                                   TextWrapping="Wrap"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextMain}" />
+                                    </StackPanel>
                                 </Border>
 
-                                <TextBlock Text="POINTS D'ARRÊT"
-                                           FontSize="11"
-                                           Foreground="{DynamicResource TextAccent}"
-                                           Margin="0,6,0,0" />
+                                <!-- Points d'arrêt -->
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Classes="section"
+                                                   Text="POINTS D'ARRÊT" />
+                                        <Border Background="{DynamicResource BgHover}"
+                                                CornerRadius="9"
+                                                Padding="7,1">
+                                            <TextBlock Text="{Binding Breakpoints.Count}"
+                                                       FontSize="10"
+                                                       Foreground="{DynamicResource TextMain}" />
+                                        </Border>
+                                    </StackPanel>
+                                    <Button Grid.Column="1"
+                                            Classes="ghost"
+                                            Content="Tout supprimer"
+                                            Command="{Binding ClearBreakpointsCommand}" />
+                                </Grid>
 
-                                <Button Content="Ajouter à la ligne du curseur"
-                                        Click="OnAddBreakpoint"
-                                        HorizontalAlignment="Stretch"
-                                        HorizontalContentAlignment="Center"
-                                        Padding="6,7" />
+                                <Button Content="●  Ajouter à la ligne du curseur"
+                                        Classes="secondary"
+                                        Click="OnAddBreakpoint" />
 
                                 <ItemsControl ItemsSource="{Binding Breakpoints}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding}"
-                                                       FontSize="12"
-                                                       Foreground="{DynamicResource TextMain}"
-                                                       Margin="0,2" />
+                                            <StackPanel Orientation="Horizontal"
+                                                        Spacing="8"
+                                                        Margin="2,3">
+                                                <Ellipse Width="8"
+                                                         Height="8"
+                                                         Fill="#EF4444"
+                                                         VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding}"
+                                                           FontSize="12"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource TextMain}" />
+                                            </StackPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
 
-                                <Button Content="Vider la liste"
-                                        Command="{Binding ClearBreakpointsCommand}"
-                                        Background="Transparent"
-                                        Foreground="{DynamicResource TextAccent}"
-                                        HorizontalAlignment="Left"
-                                        FontSize="11" />
-
-                                <TextBlock TextWrapping="Wrap"
-                                           FontSize="11"
-                                           Foreground="{DynamicResource TextDim}"
-                                           Text="Prérequis : NetCoreDbg installé (par exemple « scoop install netcoredbg ») et un projet déjà compilé." />
+                                <Border Classes="card"
+                                        IsVisible="{Binding IsDebugIdle}">
+                                    <TextBlock TextWrapping="Wrap"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextDim}"
+                                               Text="Prérequis : NetCoreDbg installé (par exemple « scoop install netcoredbg ») et un projet déjà compilé (dotnet build)." />
+                                </Border>
                             </StackPanel>
                         </ScrollViewer>
 
-                        <!-- Extensions -->
+                        <!-- Extensions & Assistant IA -->
                         <DockPanel IsVisible="{Binding IsExtensionsActive}">
                             <StackPanel DockPanel.Dock="Top"
                                         Margin="12,4,12,8"
                                         Spacing="8">
-                                <Button Content="Installer depuis un dossier..."
-                                        Click="OnInstallExtension"
-                                        HorizontalAlignment="Stretch"
-                                        HorizontalContentAlignment="Center"
-                                        Padding="6,7"
-                                        Background="{DynamicResource Primary}"
-                                        Foreground="White" />
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBox Grid.Column="0"
+                                             Text="{Binding CatalogSearchQuery}"
+                                             PlaceholderText="Rechercher sur Open VSX (python, c#, git...)"
+                                             Background="{DynamicResource BgMain}"
+                                             Foreground="{DynamicResource TextMain}" />
+                                    <Button Grid.Column="1"
+                                            Classes="primary"
+                                            Content="Chercher"
+                                            Command="{Binding SearchCatalogCommand}"
+                                            Margin="6,0,0,0"
+                                            Padding="10,6" />
+                                </Grid>
+
+                                <Border Classes="card"
+                                        IsVisible="{Binding IsCatalogInstalling}">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="{Binding CatalogProgressText}"
+                                                   FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextMain}" />
+                                        <ProgressBar Minimum="0"
+                                                     Maximum="100"
+                                                     Value="{Binding CatalogInstallProgress}"
+                                                     Height="6"
+                                                     Foreground="{DynamicResource Accent}"
+                                                     Background="{DynamicResource BgMain}" />
+                                    </StackPanel>
+                                </Border>
+
                                 <TextBlock Text="{Binding ExtensionsInfo}"
                                            FontSize="12"
+                                           TextWrapping="Wrap"
                                            Foreground="{DynamicResource TextMuted}" />
                             </StackPanel>
 
                             <ScrollViewer>
-                                <ItemsControl ItemsSource="{Binding ExtensionItems}"
-                                              Margin="12,0,12,12">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="vm:ExtensionItem">
-                                            <Border Background="{DynamicResource BgHover}"
-                                                    CornerRadius="6"
-                                                    Padding="10,8"
-                                                    Margin="0,0,0,8">
-                                                <StackPanel Spacing="4">
-                                                    <TextBlock Text="{Binding Title}"
-                                                               FontWeight="SemiBold"
-                                                               FontSize="13"
-                                                               Foreground="{DynamicResource TextMain}"
-                                                               TextWrapping="Wrap" />
-                                                    <TextBlock Text="{Binding StateText}"
-                                                               FontSize="11"
-                                                               Foreground="{DynamicResource TextAccent}" />
-                                                    <TextBlock Text="{Binding Description}"
-                                                               FontSize="12"
-                                                               TextWrapping="Wrap"
-                                                               Foreground="{DynamicResource TextMuted}" />
-                                                    <TextBlock Text="{Binding Permissions}"
-                                                               FontSize="11"
-                                                               TextWrapping="Wrap"
-                                                               Foreground="{DynamicResource TextDim}" />
-                                                    <StackPanel Orientation="Horizontal"
-                                                                Spacing="6"
-                                                                Margin="0,4,0,0">
-                                                        <Button Content="{Binding ToggleLabel}"
-                                                                Click="OnExtensionToggle"
-                                                                Padding="10,4" />
-                                                        <Button Content="Désinstaller"
-                                                                Click="OnExtensionUninstall"
+                                <StackPanel Margin="12,0,12,12" Spacing="10">
+                                    <TextBlock Classes="section"
+                                               Text="EXTENSIONS INSTALLÉES" />
+
+                                    <ItemsControl ItemsSource="{Binding ExtensionItems}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="vm:ExtensionItem">
+                                                <Border Classes="card"
+                                                        Margin="0,0,0,8">
+                                                    <StackPanel Spacing="4">
+                                                        <TextBlock Text="{Binding Title}"
+                                                                   FontWeight="SemiBold"
+                                                                   FontSize="13"
+                                                                   Foreground="{DynamicResource TextMain}"
+                                                                   TextWrapping="Wrap" />
+                                                        <TextBlock Text="{Binding StateText}"
+                                                                   FontSize="11"
+                                                                   Foreground="{DynamicResource TextAccent}" />
+                                                        <TextBlock Text="{Binding Description}"
+                                                                   FontSize="12"
+                                                                   TextWrapping="Wrap"
+                                                                   Foreground="{DynamicResource TextMuted}" />
+                                                        <TextBlock Text="{Binding PackageDetails}"
+                                                                   FontSize="11"
+                                                                   TextWrapping="Wrap"
+                                                                   Foreground="#4ADE80" />
+                                                        <TextBlock Text="{Binding Permissions}"
+                                                                   FontSize="11"
+                                                                   TextWrapping="Wrap"
+                                                                   Foreground="{DynamicResource TextDim}" />
+                                                        <StackPanel Orientation="Horizontal"
+                                                                    Spacing="6"
+                                                                    Margin="0,4,0,0">
+                                                            <Button Content="{Binding ToggleLabel}"
+                                                                    Click="OnExtensionToggle"
+                                                                    Padding="10,4" />
+                                                            <Button Content="Désinstaller"
+                                                                    Click="OnExtensionUninstall"
+                                                                    Padding="10,4" />
+                                                        </StackPanel>
+                                                        <Button Content="Ouvrir README / package.json"
+                                                                Classes="secondary"
+                                                                Click="OnExtensionOpenReadme"
+                                                                IsVisible="{Binding HasReadme}"
+                                                                Padding="8,4" />
+                                                        <Button Content="{Binding UpdateLabel}"
+                                                                Classes="primary"
+                                                                Click="OnExtensionUpdateFromCatalog"
+                                                                IsVisible="{Binding HasUpdate}"
                                                                 Padding="10,4" />
                                                     </StackPanel>
-                                                </StackPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <Button Content="Installer depuis un dossier local..."
+                                            Classes="secondary"
+                                            Click="OnInstallExtension" />
+                                    <Button Content="Mettre à jour depuis un dossier..."
+                                            Classes="secondary"
+                                            Click="OnUpdateExtension" />
+
+                                    <TextBlock Classes="section"
+                                               Text="COMMANDES D'EXTENSIONS"
+                                               Margin="0,4,0,0" />
+
+                                    <ItemsControl ItemsSource="{Binding ExtensionCommands}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="core:CommandInfo">
+                                                <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding Title}"
+                                                               FontSize="12"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Foreground="{DynamicResource TextMain}"
+                                                               VerticalAlignment="Center" />
+                                                    <Button Grid.Column="1"
+                                                            Classes="ghost"
+                                                            Content="Exécuter"
+                                                            Click="OnExecuteExtensionCommand" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <TextBlock Classes="section"
+                                               Text="MARKETPLACE (EN LIGNE)"
+                                               Margin="0,8,0,0" />
+
+                                    <ItemsControl ItemsSource="{Binding CatalogItems}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="vm:CatalogExtensionItem">
+                                                <Border Classes="card"
+                                                        Margin="0,0,0,8">
+                                                    <StackPanel Spacing="4">
+                                                        <TextBlock Text="{Binding Title}"
+                                                                   FontWeight="SemiBold"
+                                                                   FontSize="13"
+                                                                   Foreground="{DynamicResource TextMain}"
+                                                                   TextWrapping="Wrap" />
+                                                        <TextBlock Text="{Binding StatusText}"
+                                                                   FontSize="11"
+                                                                   Foreground="{DynamicResource TextAccent}" />
+                                                        <TextBlock Text="{Binding Description}"
+                                                                   FontSize="12"
+                                                                   TextWrapping="Wrap"
+                                                                   Foreground="{DynamicResource TextMuted}" />
+                                                        <StackPanel Orientation="Horizontal"
+                                                                    Spacing="6"
+                                                                    Margin="0,4,0,0">
+                                                            <Button Content="Télécharger &amp; Installer"
+                                                                    Classes="primary"
+                                                                    Click="OnCatalogInstallClick"
+                                                                    IsVisible="{Binding CanInstall}"
+                                                                    Padding="10,4" />
+                                                            <Button Content="Mettre à jour"
+                                                                    Classes="primary"
+                                                                    Click="OnCatalogUpdateClick"
+                                                                    IsVisible="{Binding CanUpdate}"
+                                                                    Padding="10,4" />
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
                             </ScrollViewer>
                         </DockPanel>
 
@@ -865,55 +967,77 @@
                   x:Name="CenterGrid"
                   RowDefinitions="36,*,0,0">
 
-                <!-- Onglets des documents -->
+                <!-- Onglets des documents + accès direct Assistant IA / Git -->
                 <Border Grid.Row="0" Background="{DynamicResource BgBar}">
-                    <StackPanel Orientation="Horizontal">
-                        <Border Background="{DynamicResource BgMain}"
-                                BorderBrush="{DynamicResource Accent}"
-                                BorderThickness="0,2,0,0"
-                                Padding="16,0"
-                                IsVisible="{Binding !HasFile}">
-                            <TextBlock Text="Bienvenue"
-                                       Foreground="{DynamicResource TextMain}"
-                                       VerticalAlignment="Center"
-                                       FontSize="13" />
-                        </Border>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                            <Border Background="{DynamicResource BgMain}"
+                                    BorderBrush="{DynamicResource Accent}"
+                                    BorderThickness="0,2,0,0"
+                                    Padding="16,0"
+                                    IsVisible="{Binding !HasFile}">
+                                <TextBlock Text="Bienvenue"
+                                           Foreground="{DynamicResource TextMain}"
+                                           VerticalAlignment="Center"
+                                           FontSize="13" />
+                            </Border>
 
-                        <ItemsControl ItemsSource="{Binding Tabs}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <StackPanel Orientation="Horizontal" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
+                            <ItemsControl ItemsSource="{Binding Tabs}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
 
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="vm:DocumentTab">
-                                    <Border Classes="doctab"
-                                            Classes.active="{Binding IsActive}"
-                                            Padding="14,0,4,0"
-                                            Cursor="Hand"
-                                            PointerPressed="OnTabPressed">
-                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <TextBlock Text="{Binding Title}"
-                                                       Foreground="{DynamicResource TextMain}"
-                                                       VerticalAlignment="Center"
-                                                       FontSize="13" />
-                                            <TextBlock Text="●"
-                                                       Foreground="{DynamicResource Accent}"
-                                                       FontSize="9"
-                                                       VerticalAlignment="Center"
-                                                       IsVisible="{Binding IsDirty}" />
-                                            <Button Content="✕"
-                                                    Click="OnTabCloseClick"
-                                                    Background="Transparent"
-                                                    Foreground="{DynamicResource TextAccent}"
-                                                    Padding="6,2" />
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="vm:DocumentTab">
+                                        <Border Classes="doctab"
+                                                Classes.active="{Binding IsActive}"
+                                                Padding="14,0,4,0"
+                                                Cursor="Hand"
+                                                PointerPressed="OnTabPressed">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="{Binding Title}"
+                                                           Foreground="{DynamicResource TextMain}"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="13" />
+                                                <TextBlock Text="●"
+                                                           Foreground="{DynamicResource Accent}"
+                                                           FontSize="9"
+                                                           VerticalAlignment="Center"
+                                                           IsVisible="{Binding IsDirty}" />
+                                                <Button Content="✕"
+                                                        Click="OnTabCloseClick"
+                                                        Background="Transparent"
+                                                        Foreground="{DynamicResource TextAccent}"
+                                                        Padding="6,2" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    Spacing="4"
+                                    Margin="6,0,8,0"
+                                    VerticalAlignment="Center">
+                            <Button Classes="ghost"
+                                    Content="Assistant IA"
+                                    Command="{Binding FocusRightAiCommand}"
+                                    ToolTip.Tip="Afficher / masquer l'Assistant IA à droite" />
+                            <Button Classes="ghost"
+                                    Content="Git &amp; GitHub"
+                                    Command="{Binding FocusRightGitCommand}"
+                                    ToolTip.Tip="Afficher / masquer Git &amp; GitHub à droite" />
+                            <Button Classes="ghost"
+                                    Content="IA + Git"
+                                    Command="{Binding SetRightPanelTabCommand}"
+                                    CommandParameter="0"
+                                    ToolTip.Tip="Afficher l'Assistant IA et Git ensemble à droite" />
+                        </StackPanel>
+                    </Grid>
                 </Border>
 
                 <!-- Accueil -->
@@ -941,33 +1065,26 @@
                                    Foreground="{DynamicResource TextAccent}"
                                    HorizontalAlignment="Center" />
 
-                        <Button Content="Ouvrir un dossier..."
-                                Click="OnOpenFolder"
-                                HorizontalAlignment="Center"
-                                Margin="0,20,0,0"
-                                Padding="20,8"
-                                Background="{DynamicResource Primary}"
-                                Foreground="White" />
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Center"
+                                    Spacing="10"
+                                    Margin="0,20,0,0">
+                            <Button Content="Ouvrir un dossier..."
+                                    Click="OnOpenFolder"
+                                    Padding="20,8"
+                                    Background="{DynamicResource Primary}"
+                                    Foreground="White" />
+                            <Button Content="Ouvrir un fichier..."
+                                    Click="OnOpenFile"
+                                    Padding="20,8" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
                 <!-- Éditeur -->
-                <TextBox Grid.Row="1"
-                         x:Name="EditorBox"
-                         Text="{Binding FileContent, Mode=OneWay}"
-                         IsReadOnly="True"
-                         AcceptsReturn="True"
-                         TextWrapping="NoWrap"
-                         FontFamily="Consolas,Cascadia Mono,monospace"
-                         FontSize="14"
-                         Background="{DynamicResource BgMain}"
-                         Foreground="{DynamicResource TextMain}"
-                         BorderThickness="0"
-                         CornerRadius="0"
-                         Padding="12"
-                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                         ScrollViewer.VerticalScrollBarVisibility="Auto"
-                         IsVisible="{Binding HasFile}" />
+                <ctl:CodeEditorControl Grid.Row="1"
+                                       x:Name="CodeEditor"
+                                       IsVisible="{Binding HasFile}" />
 
                 <!-- Recherche et remplacement -->
                 <Border Grid.Row="1"
@@ -1186,6 +1303,496 @@
                     </DockPanel>
                 </Border>
             </Grid>
+
+            <GridSplitter Grid.Column="4"
+                          Background="{DynamicResource BgMain}"
+                          ResizeDirection="Columns"
+                          IsVisible="{Binding IsRightPanelVisible}" />
+
+            <!-- Panneau droit : Assistant IA & Contrôle de code source (Git & GitHub) directement visibles -->
+            <Border Grid.Column="5"
+                    Background="{DynamicResource BgSide}"
+                    BorderBrush="{DynamicResource Line}"
+                    BorderThickness="1,0,0,0"
+                    ClipToBounds="True"
+                    IsVisible="{Binding IsRightPanelVisible}">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top"
+                            Background="{DynamicResource BgBar}"
+                            BorderBrush="{DynamicResource Line}"
+                            BorderThickness="0,0,0,1"
+                            Height="34">
+                        <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
+                            <Grid Grid.Column="0">
+                                <Border Height="2"
+                                        VerticalAlignment="Bottom"
+                                        Background="{DynamicResource Accent}"
+                                        IsVisible="{Binding IsRightBothMode}" />
+                                <Button Classes="tab"
+                                        Content="IA + GIT"
+                                        Command="{Binding SetRightPanelTabCommand}"
+                                        CommandParameter="0" />
+                            </Grid>
+                            <Grid Grid.Column="1">
+                                <Border Height="2"
+                                        VerticalAlignment="Bottom"
+                                        Background="{DynamicResource Accent}"
+                                        IsVisible="{Binding IsRightAiOnlyMode}" />
+                                <Button Classes="tab"
+                                        Content="ASSISTANT IA"
+                                        Command="{Binding SetRightPanelTabCommand}"
+                                        CommandParameter="1" />
+                            </Grid>
+                            <Grid Grid.Column="2">
+                                <Border Height="2"
+                                        VerticalAlignment="Bottom"
+                                        Background="{DynamicResource Accent}"
+                                        IsVisible="{Binding IsRightGitOnlyMode}" />
+                                <Button Classes="tab"
+                                        Content="GIT &amp; GITHUB"
+                                        Command="{Binding SetRightPanelTabCommand}"
+                                        CommandParameter="2" />
+                            </Grid>
+                            <Button Grid.Column="4"
+                                    Content="✕"
+                                    Command="{Binding ToggleRightPanelCommand}"
+                                    Background="Transparent"
+                                    Foreground="{DynamicResource TextAccent}"
+                                    Padding="10,4"
+                                    ToolTip.Tip="Masquer le panneau droit" />
+                        </Grid>
+                    </Border>
+
+                    <Grid x:Name="RightContentGrid"
+                          RowDefinitions="43*,4,57*">
+
+                        <!-- Section 1 : Assistant IA directement visible sur l'interface -->
+                        <DockPanel Grid.Row="0"
+                                   IsVisible="{Binding IsRightAiVisible}">
+                            <TextBlock DockPanel.Dock="Top"
+                                       Classes="section"
+                                       Text="ASSISTANT IA (CHAT &amp; CODE)"
+                                       Margin="12,8,12,6" />
+
+                            <ScrollViewer>
+                                <StackPanel Margin="12,0,12,10" Spacing="8">
+                                    <TextBox Text="{Binding AiPromptText}"
+                                             PlaceholderText="Posez une question ou décrivez le code à créer / modifier..."
+                                             AcceptsReturn="True"
+                                             TextWrapping="Wrap"
+                                             Height="66"
+                                             Background="{DynamicResource BgMain}"
+                                             Foreground="{DynamicResource TextMain}" />
+
+                                    <Button Content="Poser une question / Discuter (IA)"
+                                            Classes="primary"
+                                            Command="{Binding SendAiPromptCommand}" />
+
+                                    <Button Content="Coder / Modifier dans l'éditeur (IA)"
+                                            Classes="secondary"
+                                            Command="{Binding AiWriteOrModifyCodeCommand}" />
+
+                                    <Grid ColumnDefinitions="*,6,*">
+                                        <Button Grid.Column="0"
+                                                Content="Expliquer le code"
+                                                Classes="secondary"
+                                                Command="{Binding ExplainActiveCodeWithAiCommand}" />
+                                        <Button Grid.Column="2"
+                                                Content="Améliorer le code"
+                                                Classes="secondary"
+                                                Command="{Binding SuggestImprovementsWithAiCommand}" />
+                                    </Grid>
+
+                                    <Button Content="Insérer la réponse IA dans l'éditeur"
+                                            Classes="secondary"
+                                            Command="{Binding ApplyAiResponseToEditorCommand}" />
+
+                                    <Border Classes="card">
+                                        <TextBlock Text="{Binding AiResponseText}"
+                                                   TextWrapping="Wrap"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextMain}" />
+                                    </Border>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </DockPanel>
+
+                        <GridSplitter Grid.Row="1"
+                                      ResizeDirection="Rows"
+                                      Background="{DynamicResource Line}"
+                                      HorizontalAlignment="Stretch"
+                                      IsVisible="{Binding IsRightBothMode}" />
+
+                        <!-- Section 2 : Contrôle de code source (Git & GitHub) à droite de l'interface -->
+                        <DockPanel Grid.Row="2"
+                                   IsVisible="{Binding IsRightGitVisible}">
+                            <TextBlock DockPanel.Dock="Top"
+                                       Classes="section"
+                                       Text="CONTRÔLE DE CODE SOURCE (GIT &amp; GITHUB)"
+                                       Margin="12,8,12,6" />
+
+                            <Grid>
+                                <Border Classes="card"
+                                        Margin="12,4,12,8"
+                                        Padding="12"
+                                        VerticalAlignment="Top"
+                                        IsVisible="{Binding !HasFolder}">
+                                    <StackPanel Spacing="10">
+                                        <TextBlock Text="Ouvrez un dossier ou le dépôt du projet pour gérer branches, commits, diff, fusion et GitHub."
+                                                   TextWrapping="Wrap"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextMain}" />
+                                        <Button Content="Ouvrir le dépôt du projet"
+                                                Classes="primary"
+                                                Command="{Binding OpenDetectedGitRepoCommand}"
+                                                IsVisible="{Binding HasDetectedGitRepo}" />
+                                        <Button Content="Ouvrir un dossier..."
+                                                Classes="secondary"
+                                                Click="OnOpenFolder" />
+                                    </StackPanel>
+                                </Border>
+
+                                <DockPanel IsVisible="{Binding HasFolder}">
+                                    <!-- Branche courante + Diff + Actualiser -->
+                                    <Grid DockPanel.Dock="Top"
+                                          ColumnDefinitions="*,Auto,Auto"
+                                          Margin="12,0,12,6">
+                                        <Border Classes="card"
+                                                Padding="10,6">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <Path Classes="icon small"
+                                                      Stroke="{DynamicResource TextAccent}"
+                                                      Data="M6 2.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M6 16.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M18 6.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M6 7.5v9 M18 11.5c0 3.5-12 1.5-12 5" />
+                                                <TextBlock Text="{Binding Git.Controller.CurrentBranch}"
+                                                           FontSize="13"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextAccent}"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                        <Button Grid.Column="1"
+                                                Classes="ghost"
+                                                Content="Diff"
+                                                Margin="6,0,0,0"
+                                                Command="{Binding ViewFullDiffCommand}"
+                                                ToolTip.Tip="Afficher le diff complet dans Sortie" />
+                                        <Button Grid.Column="2"
+                                                Classes="tool"
+                                                Margin="4,0,0,0"
+                                                Command="{Binding Git.RefreshCommand}"
+                                                ToolTip.Tip="Actualiser">
+                                            <Path Classes="icon small"
+                                                  Data="M20 11a8 8 0 1 0-2.3 5.7 M20 4v7h-7" />
+                                        </Button>
+                                    </Grid>
+
+                                    <ScrollViewer>
+                                        <StackPanel Margin="12,0,12,12" Spacing="8">
+
+                                            <!-- Dossier qui n'est pas un dépôt -->
+                                            <Border Classes="card"
+                                                    Padding="12"
+                                                    IsVisible="{Binding IsGitRepoMissing}">
+                                                <StackPanel Spacing="10">
+                                                    <TextBlock Text="{Binding GitMessage}"
+                                                               TextWrapping="Wrap"
+                                                               FontSize="12"
+                                                               Foreground="{DynamicResource TextMain}" />
+                                                    <Button Content="Initialiser un dépôt Git"
+                                                            Classes="primary"
+                                                            Command="{Binding InitGitCommand}" />
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Erreur Git (pas « pas un dépôt ») -->
+                                            <Border Classes="card"
+                                                    BorderBrush="#F87171"
+                                                    IsVisible="{Binding HasGitError}">
+                                                <TextBlock Text="{Binding GitMessage}"
+                                                           Foreground="#F87171"
+                                                           FontSize="12"
+                                                           TextWrapping="Wrap" />
+                                            </Border>
+
+                                            <StackPanel Spacing="8"
+                                                        IsVisible="{Binding !IsGitRepoMissing}">
+
+                                                <TextBox Text="{Binding Git.Controller.CommitMessage}"
+                                                         PlaceholderText="Message de commit"
+                                                         AcceptsReturn="True"
+                                                         TextWrapping="Wrap"
+                                                         Height="54"
+                                                         Padding="8,6"
+                                                         Background="{DynamicResource BgMain}"
+                                                         Foreground="{DynamicResource TextMain}" />
+
+                                                <Button Content="✓  Valider (commit)"
+                                                        Classes="primary"
+                                                        Command="{Binding Git.CommitCommand}"
+                                                        IsEnabled="{Binding Git.Controller.CommitMessage,
+                                                                    Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                                                <Grid ColumnDefinitions="*,6,*,6,*">
+                                                    <Button Grid.Column="0"
+                                                            Classes="secondary"
+                                                            Content="Tout indexer"
+                                                            Command="{Binding Git.StageAllCommand}" />
+                                                    <Button Grid.Column="2"
+                                                            Classes="secondary"
+                                                            Content="Pull"
+                                                            Command="{Binding Git.PullCommand}" />
+                                                    <Button Grid.Column="4"
+                                                            Classes="secondary"
+                                                            Content="Push"
+                                                            Command="{Binding Git.PushCommand}" />
+                                                </Grid>
+
+                                                <Border Classes="card"
+                                                        BorderBrush="#F87171"
+                                                        Margin="0,2,0,2"
+                                                        IsVisible="{Binding Git.Controller.HasConflicts}">
+                                                    <StackPanel Spacing="6">
+                                                        <TextBlock Text="Conflits de fusion détectés"
+                                                                   FontSize="12"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="#F87171" />
+                                                        <Button Content="Annuler la fusion (Abort)"
+                                                                Classes="danger"
+                                                                Command="{Binding Git.AbortMergeCommand}" />
+                                                    </StackPanel>
+                                                </Border>
+
+                                                <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                                                    <TextBlock Classes="section"
+                                                               Text="BRANCHES &amp; FUSION" />
+                                                    <Button Grid.Column="1"
+                                                            Classes="ghost"
+                                                            Content="Abort Merge"
+                                                            Command="{Binding Git.AbortMergeCommand}" />
+                                                </Grid>
+
+                                                <Grid ColumnDefinitions="*,Auto">
+                                                    <TextBox Grid.Column="0"
+                                                             Text="{Binding Git.Controller.NewBranchName}"
+                                                             PlaceholderText="Nouvelle branche..."
+                                                             Background="{DynamicResource BgMain}"
+                                                             Foreground="{DynamicResource TextMain}" />
+                                                    <Button Grid.Column="1"
+                                                            Classes="secondary"
+                                                            HorizontalAlignment="Center"
+                                                            Content="Créer"
+                                                            Command="{Binding Git.CreateBranchCommand}"
+                                                            Margin="6,0,0,0"
+                                                            Padding="10,6" />
+                                                </Grid>
+
+                                                <ItemsControl ItemsSource="{Binding Git.Controller.Branches}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate DataType="core:GitBranch">
+                                                            <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2">
+                                                                <TextBlock Grid.Column="0"
+                                                                           Text="{Binding Name}"
+                                                                           FontSize="12"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Foreground="{DynamicResource TextMain}"
+                                                                           VerticalAlignment="Center" />
+                                                                <Button Grid.Column="1"
+                                                                        Classes="ghost"
+                                                                        Content="Basculer"
+                                                                        Click="OnGitCheckoutBranchClick"
+                                                                        IsEnabled="{Binding !IsCurrent}" />
+                                                                <Button Grid.Column="2"
+                                                                        Classes="ghost"
+                                                                        Content="Fusionner"
+                                                                        Click="OnGitMergeBranchClick"
+                                                                        IsEnabled="{Binding !IsCurrent}" />
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+
+                                                <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                                                    <TextBlock Classes="section"
+                                                               Text="CHANGEMENTS INDEXÉS" />
+                                                    <Border Grid.Column="1"
+                                                            Background="{DynamicResource Primary}"
+                                                            CornerRadius="9"
+                                                            Padding="7,1">
+                                                        <TextBlock Text="{Binding StagedCount}"
+                                                                   FontSize="10"
+                                                                   Foreground="White" />
+                                                    </Border>
+                                                </Grid>
+
+                                                <ItemsControl ItemsSource="{Binding Git.Controller.StagedFiles}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate DataType="core:GitFileStatus">
+                                                            <Grid ColumnDefinitions="Auto,*,Auto"
+                                                                  Margin="0,2">
+                                                                <TextBlock Grid.Column="0"
+                                                                           Text="{Binding State}"
+                                                                           FontSize="10"
+                                                                           Width="70"
+                                                                           Foreground="{DynamicResource TextDim}"
+                                                                           VerticalAlignment="Center" />
+                                                                <TextBlock Grid.Column="1"
+                                                                           Text="{Binding Path}"
+                                                                           FontSize="12"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Foreground="{DynamicResource TextMain}"
+                                                                           VerticalAlignment="Center"
+                                                                           Cursor="Hand"
+                                                                           PointerPressed="OnGitFilePressed" />
+                                                                <Button Grid.Column="2"
+                                                                        Classes="ghost"
+                                                                        Content="Retirer"
+                                                                        Click="OnGitUnstageClick" />
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+
+                                                <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                                                    <TextBlock Classes="section"
+                                                               Text="CHANGEMENTS" />
+                                                    <Border Grid.Column="1"
+                                                            Background="{DynamicResource BgHover}"
+                                                            CornerRadius="9"
+                                                            Padding="7,1">
+                                                        <TextBlock Text="{Binding UnstagedCount}"
+                                                                   FontSize="10"
+                                                                   Foreground="{DynamicResource TextMain}" />
+                                                    </Border>
+                                                </Grid>
+
+                                                <ItemsControl ItemsSource="{Binding Git.Controller.UnstagedFiles}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate DataType="core:GitFileStatus">
+                                                            <Grid ColumnDefinitions="Auto,*,Auto"
+                                                                  Margin="0,2">
+                                                                <TextBlock Grid.Column="0"
+                                                                           Text="{Binding State}"
+                                                                           FontSize="10"
+                                                                           Width="70"
+                                                                           Foreground="{DynamicResource TextDim}"
+                                                                           VerticalAlignment="Center" />
+                                                                <TextBlock Grid.Column="1"
+                                                                           Text="{Binding Path}"
+                                                                           FontSize="12"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Foreground="{DynamicResource TextMain}"
+                                                                           VerticalAlignment="Center"
+                                                                           Cursor="Hand"
+                                                                           PointerPressed="OnGitFilePressed" />
+                                                                <Button Grid.Column="2"
+                                                                        Classes="ghost"
+                                                                        Content="Indexer"
+                                                                        Click="OnGitStageClick" />
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+
+                                                <TextBlock Classes="section"
+                                                           Text="HISTORIQUE DES COMMITS"
+                                                           Margin="0,6,0,0" />
+
+                                                <ItemsControl ItemsSource="{Binding Git.Controller.RecentCommits}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate DataType="core:GitCommitInfo">
+                                                            <StackPanel Margin="0,2">
+                                                                <TextBlock Text="{Binding Message}"
+                                                                           FontSize="12"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Foreground="{DynamicResource TextMain}" />
+                                                                <TextBlock Text="{Binding Author}"
+                                                                           FontSize="10"
+                                                                           Foreground="{DynamicResource TextDim}" />
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+
+                                                <TextBlock Classes="section"
+                                                           Text="GITHUB PULL REQUESTS"
+                                                           Margin="0,6,0,0" />
+
+                                                <Grid ColumnDefinitions="*,6,*">
+                                                    <TextBox Grid.Column="0"
+                                                             Text="{Binding GitHubOwner}"
+                                                             PlaceholderText="Owner"
+                                                             Background="{DynamicResource BgMain}"
+                                                             Foreground="{DynamicResource TextMain}" />
+                                                    <TextBox Grid.Column="2"
+                                                             Text="{Binding GitHubRepo}"
+                                                             PlaceholderText="Dépôt"
+                                                             Background="{DynamicResource BgMain}"
+                                                             Foreground="{DynamicResource TextMain}" />
+                                                </Grid>
+
+                                                <Button Content="Charger les PRs GitHub"
+                                                        Classes="secondary"
+                                                        Command="{Binding LoadGitHubPullRequestsCommand}" />
+
+                                                <TextBlock Text="{Binding GitHubStatus}"
+                                                           FontSize="11"
+                                                           TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextMuted}" />
+
+                                                <ItemsControl ItemsSource="{Binding PullRequests}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate DataType="core:GitHubPullRequest">
+                                                            <Border Classes="card" Margin="0,0,0,6">
+                                                                <StackPanel Spacing="2">
+                                                                    <TextBlock Text="{Binding Title}"
+                                                                               FontSize="12"
+                                                                               FontWeight="SemiBold"
+                                                                               TextWrapping="Wrap"
+                                                                               Foreground="{DynamicResource TextMain}" />
+                                                                    <TextBlock FontSize="11"
+                                                                               Foreground="{DynamicResource TextAccent}">
+                                                                        <Run Text="#" />
+                                                                        <Run Text="{Binding Number}" />
+                                                                        <Run Text=" • " />
+                                                                        <Run Text="{Binding HeadBranch}" />
+                                                                        <Run Text=" → " />
+                                                                        <Run Text="{Binding BaseBranch}" />
+                                                                    </TextBlock>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+
+                                                <TextBox Text="{Binding NewPrTitle}"
+                                                         PlaceholderText="Titre d'une nouvelle PR..."
+                                                         Background="{DynamicResource BgMain}"
+                                                         Foreground="{DynamicResource TextMain}" />
+                                                <Grid ColumnDefinitions="*,6,Auto">
+                                                    <TextBox Grid.Column="0"
+                                                             Text="{Binding NewPrBase}"
+                                                             PlaceholderText="Base (main)"
+                                                             Background="{DynamicResource BgMain}"
+                                                             Foreground="{DynamicResource TextMain}" />
+                                                    <Button Grid.Column="2"
+                                                            Classes="primary"
+                                                            HorizontalAlignment="Center"
+                                                            Content="Créer PR"
+                                                            Command="{Binding CreateGitHubPullRequestCommand}"
+                                                            Padding="12,6" />
+                                                </Grid>
+
+                                            </StackPanel>
+
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Grid>
+                        </DockPanel>
+
+                    </Grid>
+                </DockPanel>
+            </Border>
         </Grid>
-	</DockPanel>
+    </DockPanel>
 </Window>
