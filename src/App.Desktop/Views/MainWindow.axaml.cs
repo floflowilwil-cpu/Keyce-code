@@ -36,8 +36,7 @@ public partial class MainWindow : Window
         TerminalView.Model = _terminalModel;
         _terminalModel.UserInput += OnTerminalUserInput;
 
-        if (Avalonia.Application.Current is { } app)
-            app.RequestedThemeVariant = ThemeVariant.Dark;
+        ApplySettings();
 
         EditorBox.PropertyChanged += (_, e) =>
         {
