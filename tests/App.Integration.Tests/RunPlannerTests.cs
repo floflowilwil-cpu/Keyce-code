@@ -161,4 +161,96 @@ public class RunPlannerTests : IDisposable
 
         Assert.Throws<FileNotFoundException>(() => planner.FindDebugAssembly(source));
     }
+
+    [Fact]
+    public void PlanDebug_CSharp_BuildsAndLeavesProgramToFindDebugAssembly()
+    {
+        CreateFile("app/App.csproj");
+        string source = CreateFile("app/Program.cs");
+
+        DebugPlan plan = new RunPlanner(Everything).PlanDebug(source);
+
+        Assert.Equal("csharp", plan.LanguageId);
+        Assert.NotNull(plan.Build);
+        Assert.Null(plan.Program);
+    }
+
+    [Fact]
+    public void PlanDebug_Python_NeedsNoBuild()
+    {
+        string file = CreateFile("script.py");
+
+        DebugPlan plan = new RunPlanner(Everything).PlanDebug(file);
+
+        Assert.Equal("python", plan.LanguageId);
+        Assert.Null(plan.Build);
+        Assert.Equal(file, plan.Program);
+    }
+
+    [Fact]
+    public void PlanDebug_Python_WithoutInterpreter_Throws()
+    {
+        string file = CreateFile("script.py");
+
+        Assert.Throws<InvalidOperationException>(
+            () => new RunPlanner(Nothing).PlanDebug(file));
+    }
+
+    [Fact]
+    public void PlanDebug_Go_NeedsNoBuild()
+    {
+        string file = CreateFile("main.go");
+
+        DebugPlan plan = new RunPlanner(Everything).PlanDebug(file);
+
+        Assert.Equal("go", plan.LanguageId);
+        Assert.Null(plan.Build);
+        Assert.Equal(file, plan.Program);
+    }
+
+    [Fact]
+    public void PlanDebug_C_CompilesWithDebugSymbols()
+    {
+        string file = CreateFile("main.c");
+
+        DebugPlan plan = new RunPlanner(Everything).PlanDebug(file);
+
+        Assert.Equal("c", plan.LanguageId);
+        RunStep step = Assert.Single(plan.Build!.Steps);
+        Assert.Contains("-g", step.Options.Arguments!);
+        Assert.NotNull(plan.Program);
+        Assert.StartsWith("main", Path.GetFileName(plan.Program!));
+    }
+
+    [Fact]
+    public void PlanDebug_RustCargoProject_UsesPackageNameFromCargoToml()
+    {
+        File.WriteAllText(
+            CreateFile("proj/Cargo.toml"),
+            "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n");
+        string source = CreateFile("proj/src/main.rs");
+
+        DebugPlan plan = new RunPlanner(Everything).PlanDebug(source);
+
+        Assert.Equal("rust", plan.LanguageId);
+        Assert.Equal("build", Args(Assert.Single(plan.Build!.Steps)));
+
+        string expected = Path.Combine(
+            _root,
+            "proj",
+            "target",
+            "debug",
+            "demo" + (OperatingSystem.IsWindows() ? ".exe" : ""));
+
+        Assert.Equal(expected, plan.Program);
+    }
+
+    [Fact]
+    public void PlanDebug_UnsupportedExtension_Throws()
+    {
+        var planner = new RunPlanner(Everything);
+
+        Assert.Throws<NotSupportedException>(
+            () => planner.PlanDebug(CreateFile("notes.txt")));
+    }
 }

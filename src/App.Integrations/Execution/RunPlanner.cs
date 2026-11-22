@@ -113,6 +113,54 @@ public sealed class RunPlanner : IRunPlanner
         };
     }
 
+    public DebugPlan PlanDebug(string filePath)
+    {
+        string file = RequireFile(filePath);
+        string directory = Path.GetDirectoryName(file)!;
+        string extension = Path.GetExtension(file).ToLowerInvariant();
+
+        switch (extension)
+        {
+            case ".cs":
+                // L'assembly n'existe qu'après la compilation : FindDebugAssembly le retrouvera.
+                return new DebugPlan("csharp", "C# (.NET)", PlanDebugBuild(file), null);
+
+            case ".py":
+                Require("Python", OperatingSystem.IsWindows()
+                    ? new[] { "python", "py" }
+                    : new[] { "python3", "python" });
+
+                return new DebugPlan("python", "Python", null, file);
+
+            case ".go":
+                Require("Go", "go");
+
+                return new DebugPlan("go", "Go", null, file);
+
+            case ".c":
+                return PlanDebugCompiled(
+                    "c", "C", file, directory,
+                    Require("Un compilateur C (gcc ou clang)", "gcc", "clang", "cc"));
+
+            case ".cpp":
+            case ".cc":
+            case ".cxx":
+                return PlanDebugCompiled(
+                    "cpp", "C++", file, directory,
+                    Require("Un compilateur C++ (g++ ou clang++)", "g++", "clang++", "c++"));
+
+            case ".rs":
+                return PlanDebugRust(file, directory);
+
+            default:
+                throw new NotSupportedException(
+                    extension.Length == 0
+                        ? "Impossible de détecter le langage : le fichier n'a pas d'extension."
+                        : $"Le débogage des fichiers « {extension} » n'est pas pris en charge "
+                          + "(langages disponibles : C#, Python, Go, C, C++, Rust).");
+        }
+    }
+
     public RunPlan PlanDebugBuild(string filePath)
     {
         string file = RequireFile(filePath);
@@ -120,7 +168,7 @@ public sealed class RunPlanner : IRunPlanner
         if (!Path.GetExtension(file).Equals(".cs", StringComparison.OrdinalIgnoreCase))
         {
             throw new NotSupportedException(
-                "Le débogage prend en charge uniquement C# (.NET) pour le moment.");
+                "La compilation du projet .NET ne concerne que les fichiers C# (.cs).");
         }
 
         string project = FindProjectFile(Path.GetDirectoryName(file)!)
@@ -217,6 +265,131 @@ public sealed class RunPlanner : IRunPlanner
             : "cmd.exe";
 
         return Single("batch", "Batch (cmd)", file, shell, new[] { "/c", file }, directory);
+    }
+
+    /// <summary>Compile avec les symboles de débogage (-g) et sans optimisation (-O0), sans lancer le programme.</summary>
+    private static DebugPlan PlanDebugCompiled(
+        string languageId,
+        string displayName,
+        string file,
+        string directory,
+        string compiler)
+    {
+        string outputDirectory = Path.Combine(Path.GetTempPath(), "KeyceCode", "debug");
+        Directory.CreateDirectory(outputDirectory);
+
+        string output = Path.Combine(
+            outputDirectory,
+            Path.GetFileNameWithoutExtension(file) + (OperatingSystem.IsWindows() ? ".exe" : ""));
+
+        var build = new RunPlan(
+            languageId,
+            displayName,
+            new[]
+            {
+                new RunStep(
+                    "Compilation de " + Path.GetFileName(file) + " (débogage)",
+                    new ExecutionStartOptions(
+                        compiler,
+                        new[] { file, "-g", "-O0", "-o", output },
+                        directory))
+            });
+
+        return new DebugPlan(languageId, displayName, build, output);
+    }
+
+    private DebugPlan PlanDebugRust(string file, string directory)
+    {
+        string? cargoRoot = FindUpwards(directory, "Cargo.toml");
+
+        if (cargoRoot is null)
+        {
+            string outputDirectory = Path.Combine(Path.GetTempPath(), "KeyceCode", "debug");
+            Directory.CreateDirectory(outputDirectory);
+
+            string output = Path.Combine(
+                outputDirectory,
+                Path.GetFileNameWithoutExtension(file) + (OperatingSystem.IsWindows() ? ".exe" : ""));
+
+            var single = new RunPlan(
+                "rust",
+                "Rust",
+                new[]
+                {
+                    new RunStep(
+                        "Compilation de " + Path.GetFileName(file) + " (débogage)",
+                        new ExecutionStartOptions(
+                            Require("Rust (rustc)", "rustc"),
+                            new[] { file, "-g", "-C", "opt-level=0", "-o", output },
+                            directory))
+                });
+
+            return new DebugPlan("rust", "Rust", single, output);
+        }
+
+        string packageName = ReadCargoPackageName(Path.Combine(cargoRoot, "Cargo.toml"))
+            ?? throw new InvalidOperationException(
+                "Impossible de lire le nom du paquet dans Cargo.toml.");
+
+        string binary = Path.Combine(
+            cargoRoot,
+            "target",
+            "debug",
+            packageName + (OperatingSystem.IsWindows() ? ".exe" : ""));
+
+        var cargo = new RunPlan(
+            "rust",
+            "Rust (cargo)",
+            new[]
+            {
+                new RunStep(
+                    "Compilation du projet Cargo (débogage)",
+                    new ExecutionStartOptions(
+                        Require("Cargo", "cargo"),
+                        new[] { "build" },
+                        cargoRoot))
+            });
+
+        return new DebugPlan("rust", "Rust (cargo)", cargo, binary);
+    }
+
+    /// <summary>Lit « name = "..." » dans la section [package] de Cargo.toml.</summary>
+    private static string? ReadCargoPackageName(string cargoToml)
+    {
+        try
+        {
+            bool inPackage = false;
+
+            foreach (string rawLine in File.ReadLines(cargoToml))
+            {
+                string line = rawLine.Trim();
+
+                if (line.StartsWith('['))
+                {
+                    inPackage = line == "[package]";
+                    continue;
+                }
+
+                if (!inPackage || !line.StartsWith("name", StringComparison.Ordinal))
+                    continue;
+
+                int equals = line.IndexOf('=');
+
+                if (equals < 0)
+                    continue;
+
+                string value = line[(equals + 1)..].Trim().Trim('"', '\'');
+
+                if (value.Length > 0)
+                    return value;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Fichier illisible : l'appelant signale l'erreur.
+        }
+
+        return null;
     }
 
     private static RunPlan PlanCompiled(

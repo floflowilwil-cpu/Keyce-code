@@ -18,6 +18,19 @@ Projet original : aucun code source ni ressource propriétaire de VS Code n'est 
 | Débogage | Debug Adapter Protocol (DAP) |
 | Tests | xUnit + tests d'intégration |
 
+## Débogage multi-langages
+
+Le débogage repose sur le **Debug Adapter Protocol (DAP)** : un adaptateur par langage, déclaré dans `DebugAdapterRegistry` (`src/App.Integrations/DebugAdapters.cs`). F5 compile le fichier actif si nécessaire, puis lance le débogueur.
+
+| Langage | Adaptateur | Installation |
+| ------- | ---------- | ------------ |
+| C# (.NET) | NetCoreDbg | `scoop install netcoredbg` |
+| Python | debugpy | `python -m pip install debugpy` |
+| Go | Delve (`dlv dap`) | `go install github.com/go-delve/delve/cmd/dlv@latest` |
+| C / C++ / Rust | lldb-dap (LLVM) | installer LLVM / LLDB |
+
+La variable d'environnement `KEYCE_DEBUGGER_<LANGAGE>` (`CSHARP`, `PYTHON`, `GO`, `NATIVE`) permet d'indiquer le chemin exact de l'outil. Pour ajouter un langage, créer une `DebugAdapterDefinition` et l'ajouter au registre.
+
 ## Architecture
 
 L'interface ne gère pas directement Git, les processus ou l'analyse des langages : elle appelle des services internes via des contrats stables.
