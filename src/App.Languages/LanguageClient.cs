@@ -15,17 +15,23 @@ public sealed partial class LanguageClient : ILanguageClient, IDisposable
     private static readonly TimeSpan InitializeTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
 
-       private static readonly Dictionary<string, (string Command, string Arguments)> Servers =
+           private static readonly Dictionary<string, (string Command, string Arguments)> Servers =
         new(StringComparer.OrdinalIgnoreCase)
         {
             ["python"] = ("python", "-m pylsp"),
             ["json"] = ("cmd.exe", "/c vscode-json-language-server --stdio"),
+            ["html"] = ("cmd.exe", "/c vscode-html-language-server --stdio"),
+            ["css"] = ("cmd.exe", "/c vscode-css-language-server --stdio"),
         };
-           private static readonly Dictionary<string, string> Extensions =
+
+    private static readonly Dictionary<string, string> Extensions =
         new(StringComparer.OrdinalIgnoreCase)
         {
             [".py"] = "python",
             [".json"] = "json",
+            [".html"] = "html",
+            [".htm"] = "html",
+            [".css"] = "css",
         };
 
     private readonly ConcurrentDictionary<string, LanguageServerProcess> _servers = new(StringComparer.OrdinalIgnoreCase);
