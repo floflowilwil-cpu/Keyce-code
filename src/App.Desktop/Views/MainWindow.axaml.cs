@@ -71,6 +71,7 @@ public partial class MainWindow : Window
         vm.SelectionRequested += OnSelectionRequested;
 
         CodeEditor.Attach(vm.EditorService, vm.EditorCommands, vm.SyntaxHighlighter);
+        CodeEditor.AttachCompletion(vm.LanguageClientService, vm.SnippetService);
         CodeEditor.DocumentId = vm.ActiveTab?.Id;
         CodeEditor.CaretChanged += OnEditorCaretChanged;
         CodeEditor.SaveRequested += OnEditorSaveRequested;

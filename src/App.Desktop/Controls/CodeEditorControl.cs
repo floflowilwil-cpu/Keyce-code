@@ -29,7 +29,7 @@ namespace App.Desktop.Controls;
 /// Police à chasse fixe supposée (colonne × largeur d'un caractère). Les tabulations sont affichées en
 /// <see cref="TabSize"/> colonnes. Pas encore géré : retour à la ligne automatique, IME, caractères larges.
 /// </summary>
-public sealed class CodeEditorControl : Control
+public sealed partial class CodeEditorControl : Control
 {
     private const double GutterPadding = 12;
     private const double ScrollbarWidth = 10;
@@ -104,6 +104,7 @@ public sealed class CodeEditorControl : Control
         set
         {
             _documentId = value;
+            HideCompletion();
             _scrollX = _scrollY = 0;
             _contentWidth = 0;
             InvalidateVisual();
@@ -429,6 +430,7 @@ public sealed class CodeEditorControl : Control
         }
 
         DrawScrollbar(context, area, lineCount);
+        DrawCompletion(context, textLeft);
     }
 
     private void DrawSelection(DrawingContext context, IReadOnlyList<Caret> carets, int line, int rawLength, int[] map, double textLeft, double y)
@@ -474,6 +476,18 @@ public sealed class CodeEditorControl : Control
     {
         base.OnPointerPressed(e);
         Focus();
+
+        if (_completionOpen)
+        {
+            if (HandleCompletionClick(e.GetPosition(this)))
+            {
+                e.Handled = true;
+                return;
+            }
+
+            HideCompletion();
+        }
+
         if (_commands is null || _documentId is not { } id) return;
 
         var point = e.GetPosition(this);
@@ -566,6 +580,7 @@ public sealed class CodeEditorControl : Control
         if (e.Text.All(char.IsControl)) return; // Entrée, Tab et Échap sont traités dans OnKeyDown
 
         Run(() => _commands.TypeText(id, e.Text));
+        OnTextTypedForCompletion(e.Text);
         e.Handled = true;
     }
 
@@ -573,6 +588,12 @@ public sealed class CodeEditorControl : Control
     {
         base.OnKeyDown(e);
         if (_commands is null || _editor is null || _documentId is not { } id) return;
+
+        if (HandleCompletionKey(e))
+        {
+            e.Handled = true;
+            return;
+        }
 
         bool ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);
         bool shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
@@ -627,6 +648,9 @@ public sealed class CodeEditorControl : Control
             case Key.Divide when ctrl:
                 Run(() => ToggleComment(id));
                 break;
+
+            // Ctrl+Espace : ouvre la liste d'auto-complétion.
+            case Key.Space when ctrl: _ = RequestCompletionAsync(manual: true); break;
 
             default: handled = false; break;
         }
@@ -716,6 +740,7 @@ public sealed class CodeEditorControl : Control
 
     private void AfterEdit(bool ensureVisible = true)
     {
+        ValidateCompletion();
         ResetBlink();
         if (ensureVisible) EnsureCaretVisible();
         else ClampScroll();
