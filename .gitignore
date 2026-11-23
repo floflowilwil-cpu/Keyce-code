@@ -491,3 +491,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Installeur : exécutable publié et setup généré
+publish/
+installer/output/

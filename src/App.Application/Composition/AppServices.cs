@@ -82,6 +82,7 @@ public sealed class AppServices : IDisposable
 
     /// <summary>Coloration syntaxique (suit seule les documents de l'éditeur ; à passer au contrôle d'édition).</summary>
     public ISyntaxHighlighter Highlighter => _highlighter;
+    public ISnippetProvider Snippets { get; } = new SnippetProvider();
     public ICommandService CommandRegistry { get; }
     public ExtensionManager Extensions { get; }
     public IExtensionCatalogService ExtensionCatalog { get; }

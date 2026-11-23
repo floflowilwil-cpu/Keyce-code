@@ -128,6 +128,8 @@ public partial class MainWindowViewModel : ObservableObject
     public IEditorService EditorService => _s.Editor;
     public IEditorCommands EditorCommands => _s.EditorCommands;
     public ISyntaxHighlighter SyntaxHighlighter => _s.Highlighter;
+    public ILanguageClient LanguageClientService => _s.Languages;
+    public ISnippetProvider SnippetService => _s.Snippets;
 
     partial void OnActiveTabChanged(
         DocumentTab? oldValue,
