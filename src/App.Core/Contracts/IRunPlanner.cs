@@ -10,17 +10,18 @@ namespace App.Core.Contracts;
 public interface IRunPlanner
 {
     /// <summary>
-    /// Plan d'exécution du fichier (langage détecté d'après l'extension).
+    /// Plan d'exécution du fichier (langage détecté d'après l'extension). HTML ouvre le navigateur par défaut.
     /// Lève <see cref="NotSupportedException"/> si le type de fichier n'est pas exécutable
     /// et <see cref="InvalidOperationException"/> si l'interpréteur ou le compilateur est introuvable.
     /// </summary>
     RunPlan PlanRun(string filePath);
 
     /// <summary>
-    /// Prépare le débogage du fichier, quel que soit son langage (C#, Python, Go, C, C++, Rust) :
-    /// compilation éventuelle et programme à lancer. Lève <see cref="NotSupportedException"/>
-    /// si le langage n'est pas pris en charge et <see cref="InvalidOperationException"/>
-    /// si le compilateur ou l'interpréteur est introuvable.
+    /// Prépare le débogage du fichier lorsque son adaptateur est disponible (C#, Python, Go, C, C++, Rust),
+    /// avec compilation éventuelle et programme à lancer. Un fichier C# isolé reçoit un projet temporaire.
+    /// HTML est prévisualisé dans le navigateur ; son débogage nécessite un adaptateur JavaScript de navigateur.
+    /// Lève <see cref="NotSupportedException"/> si aucun adaptateur n'est configuré et
+    /// <see cref="InvalidOperationException"/> si le compilateur ou l'interpréteur est introuvable.
     /// </summary>
     DebugPlan PlanDebug(string filePath);
 

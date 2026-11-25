@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -28,6 +30,11 @@ public partial class MainWindow : Window
     private MainWindowViewModel? _vm;
 
     private readonly TerminalControlModel _terminalModel = new();
+    private readonly object _terminalInputSync = new();
+    private Task _terminalInputQueue = Task.CompletedTask;
+    private readonly object _terminalOutputSync = new();
+    private TerminalSessionId? _pendingTerminalOutputSessionId;
+    private readonly List<byte[]> _pendingTerminalOutput = new();
 
     public MainWindow()
     {
@@ -79,6 +86,8 @@ public partial class MainWindow : Window
 
         vm.TerminalService.OutputBytesReceived +=
             OnTerminalOutputBytesReceived;
+        vm.ExecutionTerminalOutputReceived += OnExecutionTerminalOutputReceived;
+        vm.ExecutionTerminalResetRequested += OnExecutionTerminalResetRequested;
 
         ApplyRightPanelVisibility(vm);
     }
@@ -95,6 +104,8 @@ public partial class MainWindow : Window
 
         vm.TerminalService.OutputBytesReceived -=
             OnTerminalOutputBytesReceived;
+        vm.ExecutionTerminalOutputReceived -= OnExecutionTerminalOutputReceived;
+        vm.ExecutionTerminalResetRequested -= OnExecutionTerminalResetRequested;
     }
 
     private async void OnActivated(object? sender, EventArgs e)
@@ -119,11 +130,80 @@ public partial class MainWindow : Window
         object? sender,
         TerminalUserInputEventArgs e)
     {
-        if (_vm is null)
+        if (_vm is null || e.Data.Length == 0)
             return;
 
-        // Transmet directement les octets au pseudo-terminal.
-        _ = _vm.SendTerminalInputBytesAsync(e.Data);
+        // Le contrôle peut émettre plusieurs fragments très rapidement (une touche par événement).
+        // Une chaîne de tâches conserve strictement leur ordre avant l'écriture dans le PTY/stdin.
+        var vm = _vm;
+        byte[] data = e.Data.ToArray();
+
+        // Un processus redirigé ne fait pas l'écho des caractères comme un shell PTY.
+        // On les affiche donc localement dans le même terminal, avant sa réponse.
+        if (vm.IsExecutionInputActive)
+            _terminalModel.Feed(data, data.Length);
+
+        lock (_terminalInputSync)
+        {
+            Task previous = _terminalInputQueue;
+            _terminalInputQueue = SendTerminalInputInOrderAsync(previous, vm, data);
+        }
+    }
+
+    private static async Task SendTerminalInputInOrderAsync(
+        Task previous,
+        MainWindowViewModel vm,
+        byte[] data)
+    {
+        try { await previous; }
+        catch { /* Une saisie précédente ne doit pas bloquer les suivantes. */ }
+
+        await vm.SendTerminalInputBytesAsync(data);
+    }
+
+    private void OnExecutionTerminalOutputReceived(string data)
+    {
+        if (string.IsNullOrEmpty(data))
+            return;
+
+        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(data);
+        Dispatcher.UIThread.Post(() =>
+            _terminalModel.Feed(bytes, bytes.Length));
+    }
+
+    private void OnExecutionTerminalResetRequested()
+    {
+        // Écarter toute sortie d'amorçage de l'ancien shell qui aurait été mise en attente.
+        lock (_terminalOutputSync)
+        {
+            _pendingTerminalOutput.Clear();
+            _pendingTerminalOutputSessionId = null;
+        }
+
+        // Séquence ANSI standard : effacer l'écran et replacer le curseur en haut à gauche.
+        byte[] clear = System.Text.Encoding.ASCII.GetBytes("\u001b[2J\u001b[H\u001b[3J");
+        Dispatcher.UIThread.Post(() =>
+            _terminalModel.Feed(clear, clear.Length));
+    }
+
+    private void FlushPendingTerminalOutput(MainWindowViewModel vm)
+    {
+        if (vm.ActiveTerminalSessionId is not { } activeId)
+            return;
+
+        List<byte[]> pending;
+        lock (_terminalOutputSync)
+        {
+            if (_pendingTerminalOutputSessionId != activeId)
+                return;
+
+            pending = new List<byte[]>(_pendingTerminalOutput);
+            _pendingTerminalOutput.Clear();
+            _pendingTerminalOutputSessionId = null;
+        }
+
+        foreach (byte[] bytes in pending)
+            _terminalModel.Feed(bytes, bytes.Length);
     }
 
     private void OnTerminalOutputBytesReceived(
@@ -132,11 +212,26 @@ public partial class MainWindow : Window
     {
         var vm = _vm;
 
-        if (vm is null ||
-            vm.ActiveTerminalSessionId != e.SessionId)
+        if (vm is null)
+            return;
+
+        if (vm.ActiveTerminalSessionId is null)
         {
+            // Le shell peut afficher son invite avant que StartSessionAsync rende son ID au ViewModel.
+            lock (_terminalOutputSync)
+            {
+                if (_pendingTerminalOutputSessionId is null ||
+                    _pendingTerminalOutputSessionId == e.SessionId)
+                {
+                    _pendingTerminalOutputSessionId = e.SessionId;
+                    _pendingTerminalOutput.Add(e.Data.ToArray());
+                }
+            }
             return;
         }
+
+        if (vm.ActiveTerminalSessionId != e.SessionId)
+            return;
 
         // L'émulateur graphique doit être mis à jour sur le thread UI.
         Dispatcher.UIThread.Post(() =>
@@ -252,10 +347,13 @@ public partial class MainWindow : Window
         if (e.PropertyName == nameof(MainWindowViewModel.ActiveTab))
             CodeEditor.DocumentId = vm.ActiveTab?.Id;
 
+        if (e.PropertyName == nameof(MainWindowViewModel.ActiveTerminalSessionId))
+            FlushPendingTerminalOutput(vm);
+
         if (e.PropertyName == nameof(MainWindowViewModel.IsExecuting) && vm.IsExecuting)
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(
-                () => ExecutionInputBox.Focus(),
+                () => TerminalView.Focus(),
                 Avalonia.Threading.DispatcherPriority.Background);
         }
 
@@ -471,6 +569,11 @@ public partial class MainWindow : Window
         {
             _vm.SelectedNode = node;
             await _vm.OpenFileAsync(node);
+
+            // Réinitialiser la sélection permet de recliquer sur le même fichier
+            // après fermeture de son onglet (TreeView ne renvoie sinon aucun changement).
+            if (!node.IsDirectory && sender is TreeView tree)
+                tree.SelectedItem = null;
         }
     }
 

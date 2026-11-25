@@ -54,6 +54,18 @@ public class DebugAdapterRegistryTests
     }
 
     [Fact]
+    public void Resolve_UnknownLanguage_ListsDisplayNamesNotInternalAliases()
+    {
+        NotSupportedException error = Assert.Throws<NotSupportedException>(
+            () => Registry.Resolve("cobol", "main.cob"));
+
+        Assert.Contains("C# (.NET)", error.Message);
+        Assert.Contains("C / C++ / Rust", error.Message);
+        Assert.DoesNotContain("dotnet", error.Message);
+        Assert.DoesNotContain("golang", error.Message);
+    }
+
+    [Fact]
     public void ValidateProgram_RejectsWrongFileKinds()
     {
         Assert.Throws<ArgumentException>(

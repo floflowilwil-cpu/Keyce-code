@@ -18,6 +18,26 @@ Projet original : aucun code source ni ressource propriétaire de VS Code n'est 
 | Débogage | Debug Adapter Protocol (DAP) |
 | Tests | xUnit + tests d'intégration |
 
+## Exécution multi-langages
+
+Le planificateur `RunPlanner` détecte le type de fichier à partir de son extension. La disponibilité effective dépend des outils installés sur le poste.
+
+| Fichier | Exécution / aperçu | Outil requis |
+| --- | --- | --- |
+| `.cs` | `dotnet run` ; projet temporaire si aucun `.csproj` parent | SDK .NET |
+| `.html`, `.htm` | Aperçu dans le navigateur par défaut | Navigateur |
+| `.js`, `.mjs`, `.cjs` | Exécution avec Node.js | Node.js |
+| `.ts`, `.mts`, `.cts` | Exécution avec `tsx` | Node.js + `npx` |
+| `.py` | Exécution Python non tamponnée | Python |
+| `.java` | Exécution Java | JDK |
+| `.go` | `go run` | Go |
+| `.php`, `.rb`, `.ps1`, `.sh` | Interpréteur / shell correspondant | PHP, Ruby, PowerShell ou Bash |
+| `.bat`, `.cmd` | Invite de commandes Windows | Windows |
+| `.c`, `.cpp`, `.cc`, `.cxx` | Compilation puis exécution | GCC / Clang |
+| `.rs` | `cargo run` ou `rustc` | Rust |
+
+Un fichier CSS est utilisé par une page HTML ; il ne se lance pas seul. HTML est interprété par le navigateur et ne se compile pas comme C#.
+
 ## Débogage multi-langages
 
 Le débogage repose sur le **Debug Adapter Protocol (DAP)** : un adaptateur par langage, déclaré dans `DebugAdapterRegistry` (`src/App.Integrations/DebugAdapters.cs`). F5 compile le fichier actif si nécessaire, puis lance le débogueur.

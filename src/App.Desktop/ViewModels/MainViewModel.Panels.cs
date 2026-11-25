@@ -617,6 +617,7 @@ public partial class MainWindowViewModel
         string workingDirectory = ExecutionWorkingDirectory.Trim();
         string? workingDirectoryOption = workingDirectory.Length == 0 ? null : workingDirectory;
 
+        await PrepareTerminalForExecutionAsync();
         _pendingExecutionOutput.Clear();
         IsExecutionStarting = true;
         ExecutionStatus = "Démarrage du programme…";
@@ -643,7 +644,7 @@ public partial class MainWindowViewModel
             _pendingExecutionOutput.Clear();
             ExecutionStatus = "Programme en cours d'exécution.";
             Log($"Exécution démarrée : {executable}");
-            ShowOutput();
+            ShowTerminal();
             _ = MonitorExecutionAsync(id);
         }
         catch (Exception ex)
@@ -655,32 +656,6 @@ public partial class MainWindowViewModel
             ExecutionStatus = "Échec du démarrage : " + ex.Message;
             Log("Exécution : " + ex.Message);
             ShowOutput();
-        }
-    }
-
-    [ObservableProperty] private string _executionInput = "";
-
-    /// <summary>Envoie la ligne saisie au programme en cours (entrée standard) et l'affiche dans la sortie.</summary>
-    [RelayCommand]
-    private async Task SendExecutionInput()
-    {
-        if (_executionSessionId is not { } id)
-            return;
-
-        string text = ExecutionInput;
-        ExecutionInput = "";
-
-        // Il n'y a pas de terminal pour afficher la saisie : on la reproduit dans la sortie.
-        OutputText += text + "\n";
-
-        try
-        {
-            await _s.Execution.SendInputAsync(id, text + Environment.NewLine);
-        }
-        catch (Exception ex)
-        {
-            ExecutionStatus = "Saisie impossible : " + ex.Message;
-            Log("Saisie : " + ex.Message);
         }
     }
 
@@ -716,7 +691,8 @@ public partial class MainWindowViewModel
                 IsExecuting = false;
                 ExecutionStatus = $"Programme terminé (code de sortie : {result.ExitCode}).";
                 Log($"Processus terminé avec le code {result.ExitCode}.");
-                ShowOutput();
+                ShowTerminal();
+                _ = EnsureTerminalAsync();
             });
         }
         catch (Exception ex)
@@ -730,7 +706,8 @@ public partial class MainWindowViewModel
                 IsExecuting = false;
                 ExecutionStatus = "Erreur pendant l'exécution : " + ex.Message;
                 Log("Exécution : " + ex.Message);
-                ShowOutput();
+                ShowTerminal();
+                _ = EnsureTerminalAsync();
             });
         }
     }
@@ -753,12 +730,13 @@ public partial class MainWindowViewModel
 
     private void AppendExecutionOutput(ExecutionOutputEventArgs e)
     {
-        if (e.Stream == ExecutionOutputStream.StandardError)
-            OutputText += "[stderr] " + e.Data;
-        else
-            OutputText += e.Data;
+        // stdout et stderr sont fusionnés dans le terminal, sans préfixer chaque fragment :
+        // les flux arrivent par petits blocs et un préfixe répété casserait les lignes.
+        string data = e.Data;
 
-        ShowOutput();
+        OutputText += data;
+        ExecutionTerminalOutputReceived?.Invoke(data);
+        ShowTerminal();
     }
 
     private static IReadOnlyList<string> ParseExecutionArguments(string input)
@@ -815,7 +793,7 @@ public partial class MainWindowViewModel
     // =====================================================================
     //  Bouton ▶ : exécute le fichier actif (le langage est détecté automatiquement)
     //  et « Déboguer » : compile le fichier actif si le langage l'exige puis lance le débogueur
-    //  (C#, Python, Go, C, C++ et Rust).
+    //  (adaptateurs actuellement configurés : C#, Python, Go, C, C++ et Rust). HTML ouvre l'aperçu navigateur sous F5.
     // =====================================================================
 
     [RelayCommand]
@@ -838,6 +816,21 @@ public partial class MainWindowViewModel
             return;
 
         string? sourcePath = ActiveTab?.Path;
+        if (sourcePath is not null
+            && (Path.GetExtension(sourcePath).ToLowerInvariant() is ".html" or ".htm"))
+        {
+            // Comme dans VS Code avec un workspace web sans adaptateur navigateur : F5 ouvre
+            // l'aperçu HTML. On n'annonce pas un débogage pas-à-pas qui n'existe pas.
+            RunPlan? preview = await PreparePlanAsync(path => _s.RunPlanner.PlanRun(path));
+            if (preview is null)
+                return;
+
+            int? previewExitCode = await ExecutePlanAsync(preview);
+            DebugStatus = previewExitCode == 0
+                ? "Aperçu HTML ouvert dans le navigateur. Le débogage JavaScript dans le navigateur nécessite un adaptateur dédié."
+                : "Impossible d'ouvrir l'aperçu HTML. Consultez le terminal pour le détail.";
+            return;
+        }
 
         DebugPlan? debugPlan = null;
         RunPlan? plan = await PreparePlanAsync(path =>
@@ -880,6 +873,8 @@ public partial class MainWindowViewModel
         }
 
         _debugLanguageId = debugPlan.LanguageId;
+        _debugWorkingDirectory = debugPlan.Build?.Steps.LastOrDefault()?.Options.WorkingDirectory
+            ?? Path.GetDirectoryName(sourcePath);
         await StartDebug();
     }
 
@@ -927,6 +922,10 @@ public partial class MainWindowViewModel
     {
         Log($"▶ {plan.DisplayName}");
 
+        // Le shell PowerShell/CMD ne doit pas rester actif derrière la sortie du programme.
+        // On ferme sa PTY et on efface l'écran avant de commencer l'exécution.
+        await PrepareTerminalForExecutionAsync();
+
         int? exitCode = null;
         int lastIndex = plan.Steps.Count - 1;
         int stepIndex = 0;
@@ -959,7 +958,8 @@ public partial class MainWindowViewModel
             Log(ExecutionStatus);
         }
 
-        ShowOutput();
+        ShowTerminal();
+        _ = EnsureTerminalAsync();
         return exitCode;
     }
 
@@ -1000,7 +1000,7 @@ public partial class MainWindowViewModel
 
         _pendingExecutionOutput.Clear();
         ExecutionStatus = step.Description + " (en cours)…";
-        ShowOutput();
+        ShowTerminal();
 
         try
         {
@@ -1106,6 +1106,7 @@ public partial class MainWindowViewModel
 
     /// <summary>Langage du prochain démarrage (renseigné par « Déboguer » ; sinon déduit de l'extension).</summary>
     private string? _debugLanguageId;
+    private string? _debugWorkingDirectory;
 
     public ObservableCollection<string> Breakpoints { get; } = new();
 
@@ -1114,9 +1115,11 @@ public partial class MainWindowViewModel
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDebugIdle))]
+    [NotifyPropertyChangedFor(nameof(DebugButtonLabel))]
     private bool _isDebugging;
 
     public bool IsDebugIdle => !IsDebugging;
+    public string DebugButtonLabel => IsDebugging ? "■  Arrêter le débogage" : "▶  Run and Debug";
 
     public void AddBreakpointAtCaret()
     {
@@ -1168,9 +1171,11 @@ public partial class MainWindowViewModel
         {
             DebugStatus = "Démarrage…";
             string? languageId = _debugLanguageId;
+            string? workingDirectory = _debugWorkingDirectory;
             _debugLanguageId = null;
+            _debugWorkingDirectory = null;
             var id = await _s.Debugger.StartDebugAsync(
-                new DebugStartOptions(program, LanguageId: languageId));
+                new DebugStartOptions(program, WorkingDirectory: workingDirectory, LanguageId: languageId));
             _debugId = id;
             IsDebugging = true;
 
@@ -1224,6 +1229,15 @@ public partial class MainWindowViewModel
             DebugStatus = ex.Message;
             Log("Débogage : " + ex.Message);
         }
+    }
+
+    [RelayCommand]
+    private async Task ToggleDebug()
+    {
+        if (IsDebugging)
+            await StopDebug();
+        else
+            await DebugActiveFile();
     }
 
     [RelayCommand]
