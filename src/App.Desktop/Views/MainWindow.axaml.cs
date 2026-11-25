@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -28,6 +30,16 @@ public partial class MainWindow : Window
     private MainWindowViewModel? _vm;
 
     private readonly TerminalControlModel _terminalModel = new();
+    private readonly object _terminalInputSync = new();
+    private Task _terminalInputQueue = Task.CompletedTask;
+    private readonly object _terminalOutputSync = new();
+    private TerminalSessionId? _pendingTerminalOutputSessionId;
+    private readonly List<byte[]> _pendingTerminalOutput = new();
+
+    // Saisie d'un programme lancé par Exécuter / Déboguer : ligne en cours d'édition (mode « canonique »).
+    private readonly System.Text.StringBuilder _executionInputLine = new();
+    private bool _executionInputLastWasCr;
+    private bool _executionOutputLastWasCr;
 
     public MainWindow()
     {
@@ -79,6 +91,8 @@ public partial class MainWindow : Window
 
         vm.TerminalService.OutputBytesReceived +=
             OnTerminalOutputBytesReceived;
+        vm.ExecutionTerminalOutputReceived += OnExecutionTerminalOutputReceived;
+        vm.ExecutionTerminalResetRequested += OnExecutionTerminalResetRequested;
 
         ApplyRightPanelVisibility(vm);
     }
@@ -95,6 +109,8 @@ public partial class MainWindow : Window
 
         vm.TerminalService.OutputBytesReceived -=
             OnTerminalOutputBytesReceived;
+        vm.ExecutionTerminalOutputReceived -= OnExecutionTerminalOutputReceived;
+        vm.ExecutionTerminalResetRequested -= OnExecutionTerminalResetRequested;
     }
 
     private async void OnActivated(object? sender, EventArgs e)
@@ -119,11 +135,201 @@ public partial class MainWindow : Window
         object? sender,
         TerminalUserInputEventArgs e)
     {
-        if (_vm is null)
+        if (_vm is null || e.Data.Length == 0)
             return;
 
-        // Transmet directement les octets au pseudo-terminal.
-        _ = _vm.SendTerminalInputBytesAsync(e.Data);
+        // Le contrôle peut émettre plusieurs fragments très rapidement (une touche par événement).
+        // Une chaîne de tâches conserve strictement leur ordre avant l'écriture dans le PTY/stdin.
+        var vm = _vm;
+        byte[] data = e.Data.ToArray();
+
+        // Un processus redirigé ne fait pas l'écho des caractères comme un shell PTY : on gère donc
+        // la saisie ici (écho, retour arrière, envoi à la touche Entrée), comme une console classique.
+        if (vm.IsExecutionInputActive)
+        {
+            HandleExecutionKeystrokes(vm, data);
+            return;
+        }
+
+        lock (_terminalInputSync)
+        {
+            Task previous = _terminalInputQueue;
+            _terminalInputQueue = SendTerminalInputInOrderAsync(previous, vm, data);
+        }
+    }
+
+    private static async Task SendTerminalInputInOrderAsync(
+        Task previous,
+        MainWindowViewModel vm,
+        byte[] data)
+    {
+        try { await previous; }
+        catch { /* Une saisie précédente ne doit pas bloquer les suivantes. */ }
+
+        await vm.SendTerminalInputBytesAsync(data);
+    }
+
+    /// <summary>
+    /// Saisie au clavier pendant l'exécution d'un programme : écho local, Entrée envoie la ligne,
+    /// retour arrière efface un caractère, Ctrl+C arrête le programme, les séquences d'échappement sont ignorées.
+    /// </summary>
+    private void HandleExecutionKeystrokes(MainWindowViewModel vm, byte[] data)
+    {
+        string text = System.Text.Encoding.UTF8.GetString(data);
+        var echo = new System.Text.StringBuilder();
+        var lines = new List<string>();
+        bool interrupt = false;
+
+        for (int i = 0; i < text.Length; i++)
+        {
+            char c = text[i];
+
+            if (c == '\u001b')
+            {
+                // Flèches, touches de fonction... : séquence « ESC [ ... » ou « ESC O x », ignorée.
+                if (i + 1 < text.Length && (text[i + 1] == '[' || text[i + 1] == 'O'))
+                {
+                    i += 2;
+                    while (i < text.Length && !(text[i] >= '@' && text[i] <= '~'))
+                        i++;
+                }
+
+                continue;
+            }
+
+            if (c == '\r' || c == '\n')
+            {
+                if (c == '\n' && _executionInputLastWasCr)
+                {
+                    _executionInputLastWasCr = false;
+                    continue;
+                }
+
+                _executionInputLastWasCr = c == '\r';
+                echo.Append("\r\n");
+                lines.Add(_executionInputLine.ToString());
+                _executionInputLine.Clear();
+                continue;
+            }
+
+            _executionInputLastWasCr = false;
+
+            if (c == '\u007f' || c == '\b')
+            {
+                if (_executionInputLine.Length > 0)
+                {
+                    int remove = _executionInputLine.Length > 1
+                        && char.IsLowSurrogate(_executionInputLine[_executionInputLine.Length - 1])
+                        ? 2
+                        : 1;
+
+                    _executionInputLine.Length -= remove;
+                    echo.Append("\b \b");
+                }
+
+                continue;
+            }
+
+            if (c == '\u0003')
+            {
+                echo.Append("^C\r\n");
+                _executionInputLine.Clear();
+                interrupt = true;
+                continue;
+            }
+
+            if (c < ' ' && c != '\t')
+                continue;
+
+            _executionInputLine.Append(c);
+            echo.Append(c);
+        }
+
+        if (echo.Length > 0)
+        {
+            byte[] echoBytes = System.Text.Encoding.UTF8.GetBytes(echo.ToString());
+            _terminalModel.Feed(echoBytes, echoBytes.Length);
+        }
+
+        foreach (string line in lines)
+        {
+            byte[] payload = System.Text.Encoding.UTF8.GetBytes(line + Environment.NewLine);
+
+            lock (_terminalInputSync)
+            {
+                Task previous = _terminalInputQueue;
+                _terminalInputQueue = SendTerminalInputInOrderAsync(previous, vm, payload);
+            }
+        }
+
+        if (interrupt)
+            vm.StopAllCommand.Execute(null);
+    }
+
+    /// <summary>Un programme .NET écrit « \n » ou « \r\n » ; l'émulateur a besoin de « \r\n » pour revenir en début de ligne.</summary>
+    private string NormalizeNewLines(string data)
+    {
+        var builder = new System.Text.StringBuilder(data.Length + 8);
+
+        foreach (char c in data)
+        {
+            if (c == '\n' && !_executionOutputLastWasCr)
+                builder.Append('\r');
+
+            builder.Append(c);
+            _executionOutputLastWasCr = c == '\r';
+        }
+
+        return builder.ToString();
+    }
+
+    private void OnExecutionTerminalOutputReceived(string data)
+    {
+        if (string.IsNullOrEmpty(data))
+            return;
+
+        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(NormalizeNewLines(data));
+        Dispatcher.UIThread.Post(() =>
+            _terminalModel.Feed(bytes, bytes.Length));
+    }
+
+    private void OnExecutionTerminalResetRequested()
+    {
+        // Écarter toute sortie d'amorçage de l'ancien shell qui aurait été mise en attente.
+        lock (_terminalOutputSync)
+        {
+            _pendingTerminalOutput.Clear();
+            _pendingTerminalOutputSessionId = null;
+        }
+
+        _executionInputLine.Clear();
+        _executionInputLastWasCr = false;
+        _executionOutputLastWasCr = false;
+
+        // Séquence ANSI standard : effacer l'écran et replacer le curseur en haut à gauche.
+        byte[] clear = System.Text.Encoding.ASCII.GetBytes("\u001b[2J\u001b[H\u001b[3J");
+        Dispatcher.UIThread.Post(() =>
+            _terminalModel.Feed(clear, clear.Length));
+    }
+
+    private void FlushPendingTerminalOutput(MainWindowViewModel vm)
+    {
+        if (vm.ActiveTerminalSessionId is not { } activeId)
+            return;
+
+        List<byte[]> pending;
+        lock (_terminalOutputSync)
+        {
+            if (_pendingTerminalOutputSessionId != activeId)
+                return;
+
+            pending = new List<byte[]>(_pendingTerminalOutput);
+            _pendingTerminalOutput.Clear();
+            _pendingTerminalOutputSessionId = null;
+        }
+
+        foreach (byte[] bytes in pending)
+            _terminalModel.Feed(bytes, bytes.Length);
     }
 
     private void OnTerminalOutputBytesReceived(
@@ -132,11 +338,26 @@ public partial class MainWindow : Window
     {
         var vm = _vm;
 
-        if (vm is null ||
-            vm.ActiveTerminalSessionId != e.SessionId)
+        if (vm is null)
+            return;
+
+        if (vm.ActiveTerminalSessionId is null)
         {
+            // Le shell peut afficher son invite avant que StartSessionAsync rende son ID au ViewModel.
+            lock (_terminalOutputSync)
+            {
+                if (_pendingTerminalOutputSessionId is null ||
+                    _pendingTerminalOutputSessionId == e.SessionId)
+                {
+                    _pendingTerminalOutputSessionId = e.SessionId;
+                    _pendingTerminalOutput.Add(e.Data.ToArray());
+                }
+            }
             return;
         }
+
+        if (vm.ActiveTerminalSessionId != e.SessionId)
+            return;
 
         // L'émulateur graphique doit être mis à jour sur le thread UI.
         Dispatcher.UIThread.Post(() =>
@@ -252,10 +473,13 @@ public partial class MainWindow : Window
         if (e.PropertyName == nameof(MainWindowViewModel.ActiveTab))
             CodeEditor.DocumentId = vm.ActiveTab?.Id;
 
+        if (e.PropertyName == nameof(MainWindowViewModel.ActiveTerminalSessionId))
+            FlushPendingTerminalOutput(vm);
+
         if (e.PropertyName == nameof(MainWindowViewModel.IsExecuting) && vm.IsExecuting)
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(
-                () => ExecutionInputBox.Focus(),
+                () => TerminalView.Focus(),
                 Avalonia.Threading.DispatcherPriority.Background);
         }
 
@@ -335,6 +559,46 @@ public partial class MainWindow : Window
     // Raccourcis clavier
     // ================================================================
 
+    private bool HandleRunShortcut(Key key, bool ctrl, bool shift)
+    {
+        if (_vm is null)
+            return false;
+
+        switch (key)
+        {
+            case Key.F5 when ctrl:
+                _vm.RunActiveFileCommand.Execute(null);
+                return true;
+
+            case Key.F5 when shift:
+                _vm.StopAllCommand.Execute(null);
+                return true;
+
+            case Key.F5:
+                _vm.StartOrContinueDebugCommand.Execute(null);
+                return true;
+
+            case Key.F10 when _vm.IsDebugging:
+                _vm.DebugOverCommand.Execute(null);
+                return true;
+
+            case Key.F11 when _vm.IsDebugging && shift:
+                _vm.DebugOutCommand.Execute(null);
+                return true;
+
+            case Key.F11 when _vm.IsDebugging:
+                _vm.DebugIntoCommand.Execute(null);
+                return true;
+
+            case Key.F9:
+                _vm.AddBreakpointAtCaret();
+                return true;
+
+            default:
+                return false;
+        }
+    }
+
     private async void OnWindowKeyDown(
         object? sender,
         KeyEventArgs e)
@@ -348,6 +612,14 @@ public partial class MainWindow : Window
 
         bool shift =
             e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+
+        // Exécution et débogage : traités ici (phase « tunnel ») pour fonctionner quel que soit le contrôle
+        // qui a le focus (éditeur, terminal, explorateur...).
+        if (HandleRunShortcut(e.Key, ctrl, shift))
+        {
+            e.Handled = true;
+            return;
+        }
 
         // Annuler / rétablir : fonctionne aussi quand le focus n'est pas dans l'éditeur (explorateur, onglets,
         // après un clic dans un menu). Quand l'éditeur a le focus, c'est lui qui traite la touche (curseur et
@@ -471,6 +743,11 @@ public partial class MainWindow : Window
         {
             _vm.SelectedNode = node;
             await _vm.OpenFileAsync(node);
+
+            // Réinitialiser la sélection permet de recliquer sur le même fichier
+            // après fermeture de son onglet (TreeView ne renvoie sinon aucun changement).
+            if (!node.IsDirectory && sender is TreeView tree)
+                tree.SelectedItem = null;
         }
     }
 

@@ -163,14 +163,23 @@ public sealed class ExecutionService : IExecutionService
 
             registered = true;
 
+            // 65001 (UTF-8) : détection automatique. Un programme .NET sous Windows écrit dans la page
+            // de codes OEM de la console (850, 437...), pas en UTF-8 : sans repli, les accents seraient perdus.
+            bool autoDetect = options.OutputCodePage == 65001;
+            Encoding fallbackEncoding = autoDetect ? GetOemEncoding() : outputEncoding;
+
             session.StandardOutputTask = ReadOutputAsync(
                 sessionId,
-                process.StandardOutput,
+                process.StandardOutput.BaseStream,
+                autoDetect,
+                fallbackEncoding,
                 ExecutionOutputStream.StandardOutput);
 
             session.StandardErrorTask = ReadOutputAsync(
                 sessionId,
-                process.StandardError,
+                process.StandardError.BaseStream,
+                autoDetect,
+                fallbackEncoding,
                 ExecutionOutputStream.StandardError);
 
             return sessionId;
@@ -321,27 +330,51 @@ public sealed class ExecutionService : IExecutionService
 
     private async Task ReadOutputAsync(
         ExecutionSessionId sessionId,
-        StreamReader reader,
-        ExecutionOutputStream stream)
+        Stream stream,
+        bool autoDetect,
+        Encoding fallback,
+        ExecutionOutputStream kind)
     {
-        char[] buffer = new char[4096];
+        byte[] buffer = new byte[4096];
+        byte[] carry = Array.Empty<byte>();
+        var strictUtf8 = new UTF8Encoding(false, true);
 
         try
         {
             while (true)
             {
-                int count = await reader.ReadAsync(
-                    buffer.AsMemory(0, buffer.Length));
+                int count = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length));
 
                 if (count == 0)
                     break;
 
-                string data = new(buffer, 0, count);
+                byte[] data = new byte[carry.Length + count];
+                Buffer.BlockCopy(carry, 0, data, 0, carry.Length);
+                Buffer.BlockCopy(buffer, 0, data, carry.Length, count);
+
+                // Un caractère UTF-8 peut être coupé entre deux lectures : on garde sa fin en attente.
+                int keep = autoDetect ? IncompleteUtf8Tail(data) : 0;
+                int usable = data.Length - keep;
+
+                carry = keep == 0
+                    ? Array.Empty<byte>()
+                    : data.AsSpan(usable).ToArray();
+
+                if (usable == 0)
+                    continue;
 
                 RaiseOutputReceived(
                     sessionId,
-                    stream,
-                    data);
+                    kind,
+                    Decode(data, usable, autoDetect ? strictUtf8 : null, fallback));
+            }
+
+            if (carry.Length > 0)
+            {
+                RaiseOutputReceived(
+                    sessionId,
+                    kind,
+                    Decode(carry, carry.Length, autoDetect ? strictUtf8 : null, fallback));
             }
         }
         catch (IOException)
@@ -351,6 +384,60 @@ public sealed class ExecutionService : IExecutionService
         catch (ObjectDisposedException)
         {
             // The stream has already been disposed.
+        }
+    }
+
+    private static string Decode(
+        byte[] data,
+        int count,
+        UTF8Encoding? strictUtf8,
+        Encoding fallback)
+    {
+        if (strictUtf8 is not null)
+        {
+            try
+            {
+                return strictUtf8.GetString(data, 0, count);
+            }
+            catch (DecoderFallbackException)
+            {
+                // Pas de l'UTF-8 valide : page de codes de la console.
+            }
+        }
+
+        return fallback.GetString(data, 0, count);
+    }
+
+    /// <summary>Nombre d'octets en fin de tampon qui forment le début d'un caractère UTF-8 incomplet.</summary>
+    private static int IncompleteUtf8Tail(byte[] data)
+    {
+        int max = Math.Min(3, data.Length);
+
+        for (int back = 1; back <= max; back++)
+        {
+            byte value = data[data.Length - back];
+
+            if ((value & 0xC0) == 0x80)
+                continue;
+
+            int expected = value >= 0xF0 ? 4 : value >= 0xE0 ? 3 : value >= 0xC0 ? 2 : 1;
+
+            return expected > back ? back : 0;
+        }
+
+        return 0;
+    }
+
+    private static Encoding GetOemEncoding()
+    {
+        try
+        {
+            return Encoding.GetEncoding(
+                System.Globalization.CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
+        }
+        catch (Exception)
+        {
+            return Encoding.Latin1;
         }
     }
 

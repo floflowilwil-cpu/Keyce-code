@@ -27,4 +27,9 @@ public interface IDebugService
     Task StopDebugAsync(
         DebugSessionId id,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Se déclenche lorsque le programme débogué écrit sur sa sortie standard ou d'erreur.
+    /// </summary>
+    event EventHandler<DebugOutputEventArgs>? OutputReceived;
 }

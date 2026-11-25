@@ -1,5 +1,7 @@
 using System.Xml;
 using System.Xml.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using App.Core.Contracts;
 using App.Core.Models;
 
@@ -13,6 +15,14 @@ public sealed class RunPlanner : IRunPlanner
 {
     private static readonly IReadOnlyDictionary<string, string> PythonEnvironment =
         new Dictionary<string, string> { ["PYTHONIOENCODING"] = "utf-8" };
+
+    private static readonly IReadOnlyDictionary<string, string> DotnetEnvironment =
+        new Dictionary<string, string>
+        {
+            ["DOTNET_NOLOGO"] = "1",
+            ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1",
+            ["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1"
+        };
 
     private readonly Func<string, string?> _locate;
 
@@ -36,6 +46,13 @@ public sealed class RunPlanner : IRunPlanner
         return extension switch
         {
             ".cs" => PlanCSharp(file, directory),
+
+            ".csproj" => PlanCSharpProject(file),
+
+            ".html" or ".htm" => PlanHtmlPreview(file, directory),
+
+            // Une feuille de style s'applique à une page : on ouvre la page HTML voisine.
+            ".css" => PlanHtmlPreview(RequireSiblingHtml(file, directory), directory),
 
             ".py" => Single(
                 "python", "Python", file,
@@ -122,8 +139,23 @@ public sealed class RunPlanner : IRunPlanner
         switch (extension)
         {
             case ".cs":
-                // L'assembly n'existe qu'après la compilation : FindDebugAssembly le retrouvera.
+            case ".csproj":
+                // Un projet temporaire est créé pour les fichiers isolés ; le fichier source reste à son emplacement.
                 return new DebugPlan("csharp", "C# (.NET)", PlanDebugBuild(file), null);
+
+            case ".html":
+            case ".htm":
+                throw new NotSupportedException(
+                    "HTML est prévisualisé dans le navigateur et ne se compile pas. "
+                    + "Le débogage des scripts JavaScript intégrés à la page nécessite un adaptateur de navigateur, "
+                    + "qui n'est pas encore configuré dans Keyce Code.");
+
+            case ".js":
+            case ".mjs":
+            case ".cjs":
+                throw new NotSupportedException(
+                    "JavaScript peut être exécuté avec Node.js. Son débogage pas à pas nécessite "
+                    + "l'adaptateur JavaScript Debug (js-debug), qui n'est pas encore configuré.");
 
             case ".py":
                 Require("Python", OperatingSystem.IsWindows()
@@ -156,8 +188,7 @@ public sealed class RunPlanner : IRunPlanner
                 throw new NotSupportedException(
                     extension.Length == 0
                         ? "Impossible de détecter le langage : le fichier n'a pas d'extension."
-                        : $"Le débogage des fichiers « {extension} » n'est pas pris en charge "
-                          + "(langages disponibles : C#, Python, Go, C, C++, Rust).");
+                        : $"Le débogage des fichiers « {extension} » n'est pas encore configuré dans Keyce Code.");
         }
     }
 
@@ -165,15 +196,19 @@ public sealed class RunPlanner : IRunPlanner
     {
         string file = RequireFile(filePath);
 
-        if (!Path.GetExtension(file).Equals(".cs", StringComparison.OrdinalIgnoreCase))
+        string extension = Path.GetExtension(file);
+        bool isProjectFile = extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase);
+        if (!isProjectFile && !extension.Equals(".cs", StringComparison.OrdinalIgnoreCase))
         {
             throw new NotSupportedException(
-                "La compilation du projet .NET ne concerne que les fichiers C# (.cs).");
+                "La compilation .NET concerne les fichiers C# (.cs) ou les projets (.csproj).");
         }
 
-        string project = FindProjectFile(Path.GetDirectoryName(file)!)
-            ?? throw new InvalidOperationException(
-                "Aucun fichier .csproj trouvé : le débogage nécessite un projet .NET.");
+        string? existingProject = isProjectFile ? file : FindProjectFile(Path.GetDirectoryName(file)!);
+        string project = existingProject ?? CreateStandaloneCSharpProject(file);
+        string workingDirectory = existingProject is not null
+            ? Path.GetDirectoryName(project)!
+            : Path.GetDirectoryName(file)!;
 
         string dotnet = Require(".NET SDK", "dotnet");
 
@@ -182,7 +217,8 @@ public sealed class RunPlanner : IRunPlanner
             new ExecutionStartOptions(
                 dotnet,
                 new[] { "build", project, "-c", "Debug", "-nologo" },
-                Path.GetDirectoryName(project)));
+                workingDirectory,
+                DotnetEnvironment));
 
         return new RunPlan("csharp", "C# (.NET)", new[] { step });
     }
@@ -191,9 +227,9 @@ public sealed class RunPlanner : IRunPlanner
     {
         string file = RequireFile(filePath);
 
-        string project = FindProjectFile(Path.GetDirectoryName(file)!)
-            ?? throw new InvalidOperationException(
-                "Aucun fichier .csproj trouvé : le débogage nécessite un projet .NET.");
+        string project = Path.GetExtension(file).Equals(".csproj", StringComparison.OrdinalIgnoreCase)
+            ? file
+            : FindProjectFile(Path.GetDirectoryName(file)!) ?? CreateStandaloneCSharpProject(file);
 
         string assemblyName = ReadAssemblyName(project)
             ?? Path.GetFileNameWithoutExtension(project);
@@ -226,14 +262,117 @@ public sealed class RunPlanner : IRunPlanner
             return Single(
                 "csharp", "C# (.NET)", file, dotnet,
                 new[] { "run", "--project", project },
-                Path.GetDirectoryName(project)!);
+                Path.GetDirectoryName(project)!,
+                DotnetEnvironment);
         }
 
-        // Fichier isolé sans projet : « dotnet run fichier.cs » (SDK .NET 10 ou plus).
+        // Fichier isolé : générer un petit projet temporaire pour rester compatible avec les SDK .NET 8+.
+        string standaloneProject = CreateStandaloneCSharpProject(file);
         return Single(
             "csharp", "C# (fichier isolé)", file, dotnet,
-            new[] { "run", file },
-            directory);
+            new[] { "run", "--project", standaloneProject },
+            directory,
+            DotnetEnvironment);
+    }
+
+    private RunPlan PlanCSharpProject(string projectFile)
+    {
+        string dotnet = Require(".NET SDK", "dotnet");
+        string projectDirectory = Path.GetDirectoryName(projectFile)!;
+        return Single(
+            "csharp", "C# (.NET)", projectFile, dotnet,
+            new[] { "run", "--project", projectFile },
+            projectDirectory,
+            DotnetEnvironment);
+    }
+
+    private RunPlan PlanHtmlPreview(string file, string directory)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            string shell = Require("Invite de commandes Windows", "cmd.exe", "cmd");
+
+            // Arguments bruts : le chemin est mis entre guillemets pour cmd (espaces, « # », « & »...),
+            // et le titre vide "" évite que « start » prenne le chemin pour un titre de fenêtre.
+            var step = new RunStep(
+                "Ouverture de " + Path.GetFileName(file) + " dans le navigateur",
+                new ExecutionStartOptions(
+                    shell,
+                    WorkingDirectory: directory,
+                    RawArguments: "/c start \"\" \"" + file + "\""));
+
+            return new RunPlan("html", "HTML (navigateur)", new[] { step });
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            string opener = Require("Navigateur par défaut", "open");
+            return Single("html", "HTML (navigateur)", file, opener, new[] { file }, directory);
+        }
+
+        string linuxOpener = Require("Navigateur par défaut", "xdg-open");
+        return Single("html", "HTML (navigateur)", file, linuxOpener, new[] { file }, directory);
+    }
+
+    /// <summary>Page HTML à ouvrir pour un fichier CSS : index.html du dossier (ou d'un dossier parent proche), sinon la première page.</summary>
+    private static string RequireSiblingHtml(string file, string directory)
+    {
+        DirectoryInfo? current = new(directory);
+
+        for (int level = 0; level < 3 && current is not null; level++, current = current.Parent)
+        {
+            string index = Path.Combine(current.FullName, "index.html");
+
+            if (File.Exists(index))
+                return index;
+
+            string[] pages = Directory.GetFiles(current.FullName, "*.html");
+
+            if (pages.Length > 0)
+            {
+                Array.Sort(pages, StringComparer.OrdinalIgnoreCase);
+                return pages[0];
+            }
+        }
+
+        throw new NotSupportedException(
+            "Un fichier CSS ne se lance pas seul : il est appliqué par une page HTML. "
+            + "Ajoutez ou ouvrez un fichier .html pour voir le résultat.");
+    }
+
+    /// <summary>
+    /// Crée un projet .NET temporaire déterministe pour compiler un .cs isolé sans modifier son dossier.
+    /// Le projet inclut le fichier source original par chemin absolu.
+    /// </summary>
+    private static string CreateStandaloneCSharpProject(string sourceFile)
+    {
+        string normalized = Path.GetFullPath(sourceFile);
+        string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)))[..16];
+        string safeName = Path.GetFileNameWithoutExtension(normalized);
+        foreach (char invalid in Path.GetInvalidFileNameChars())
+            safeName = safeName.Replace(invalid, '_');
+        if (string.IsNullOrWhiteSpace(safeName)) safeName = "Program";
+
+        string projectDirectory = Path.Combine(Path.GetTempPath(), "KeyceCode", "standalone", hash);
+        Directory.CreateDirectory(projectDirectory);
+        string projectPath = Path.Combine(projectDirectory, safeName + ".csproj");
+
+        var project = new XDocument(
+            new XElement("Project",
+                new XAttribute("Sdk", "Microsoft.NET.Sdk"),
+                new XElement("PropertyGroup",
+                    new XElement("OutputType", "Exe"),
+                    new XElement("TargetFramework", "net10.0"),
+                    new XElement("ImplicitUsings", "enable"),
+                    new XElement("Nullable", "enable"),
+                    new XElement("DebugType", "portable"),
+                    new XElement("DebugSymbols", "true"),
+                    new XElement("AssemblyName", safeName)),
+                new XElement("ItemGroup",
+                    new XElement("Compile", new XAttribute("Include", normalized)))));
+
+        project.Save(projectPath);
+        return projectPath;
     }
 
     private RunPlan PlanRust(string file, string directory)

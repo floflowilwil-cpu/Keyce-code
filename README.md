@@ -18,6 +18,40 @@ Projet original : aucun code source ni ressource propriétaire de VS Code n'est 
 | Débogage | Debug Adapter Protocol (DAP) |
 | Tests | xUnit + tests d'intégration |
 
+## Exécution multi-langages
+
+Le planificateur `RunPlanner` détecte le type de fichier à partir de son extension. La disponibilité effective dépend des outils installés sur le poste.
+
+| Fichier | Exécution / aperçu | Outil requis |
+| --- | --- | --- |
+| `.cs` | `dotnet run` ; projet temporaire si aucun `.csproj` parent | SDK .NET |
+| `.csproj` | `dotnet run --project` | SDK .NET |
+| `.html`, `.htm` | Aperçu dans le navigateur par défaut | Navigateur |
+| `.css` | Ouvre la page HTML voisine (`index.html`) | Navigateur |
+| `.js`, `.mjs`, `.cjs` | Exécution avec Node.js | Node.js |
+| `.ts`, `.mts`, `.cts` | Exécution avec `tsx` | Node.js + `npx` |
+| `.py` | Exécution Python non tamponnée | Python |
+| `.java` | Exécution Java | JDK |
+| `.go` | `go run` | Go |
+| `.php`, `.rb`, `.ps1`, `.sh` | Interpréteur / shell correspondant | PHP, Ruby, PowerShell ou Bash |
+| `.bat`, `.cmd` | Invite de commandes Windows | Windows |
+| `.c`, `.cpp`, `.cc`, `.cxx` | Compilation puis exécution | GCC / Clang |
+| `.rs` | `cargo run` ou `rustc` | Rust |
+
+HTML est interprété par le navigateur et ne se compile pas comme C#.
+
+### Raccourcis et boutons
+
+| Action | Raccourci | Où |
+| --- | --- | --- |
+| Exécuter et déboguer / Continuer | `F5` | menu *Exécuter*, panneau *Exécuter et déboguer* |
+| Exécuter sans débogage | `Ctrl+F5` | idem |
+| Arrêter | `Maj+F5` | idem |
+| Pas à pas principal / détaillé / sortant | `F10` / `F11` / `Maj+F11` | pendant le débogage |
+| Point d'arrêt à la ligne du curseur | `F9` | menu *Exécuter* |
+
+La sortie du programme s'affiche dans l'onglet *Terminal* ; la saisie (`Console.ReadLine`, `input()`...) se fait directement dans ce terminal. Si l'adaptateur de débogage du langage n'est pas installé, `F5` exécute simplement le programme (comme `Ctrl+F5`).
+
 ## Débogage multi-langages
 
 Le débogage repose sur le **Debug Adapter Protocol (DAP)** : un adaptateur par langage, déclaré dans `DebugAdapterRegistry` (`src/App.Integrations/DebugAdapters.cs`). F5 compile le fichier actif si nécessaire, puis lance le débogueur.

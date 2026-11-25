@@ -19,43 +19,43 @@
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Dark">
-                    <SolidColorBrush x:Key="BgMain">#0E0A1F</SolidColorBrush>
-                    <SolidColorBrush x:Key="BgBar">#14102B</SolidColorBrush>
-                    <SolidColorBrush x:Key="BgSide">#171230</SolidColorBrush>
-                    <SolidColorBrush x:Key="BgPanel">#12102A</SolidColorBrush>
-                    <SolidColorBrush x:Key="BgHover">#1E1840</SolidColorBrush>
-                    <SolidColorBrush x:Key="BgFloat">#1E1840</SolidColorBrush>
-                    <SolidColorBrush x:Key="Line">#2A2350</SolidColorBrush>
-                    <SolidColorBrush x:Key="TextMain">#E9E5FF</SolidColorBrush>
-                    <SolidColorBrush x:Key="TextMuted">#9B93C4</SolidColorBrush>
-                    <SolidColorBrush x:Key="TextDim">#7F78A8</SolidColorBrush>
-                    <SolidColorBrush x:Key="TextAccent">#C4B5FD</SolidColorBrush>
-                    <SolidColorBrush x:Key="TextTitle">#FFFFFF</SolidColorBrush>
-                    <SolidColorBrush x:Key="Icon">#9A8FC9</SolidColorBrush>
-                    <SolidColorBrush x:Key="IconActive">#F3EFFF</SolidColorBrush>
-                    <SolidColorBrush x:Key="FolderIcon">#C084FC</SolidColorBrush>
-                    <SolidColorBrush x:Key="Accent">#A855F7</SolidColorBrush>
-                    <SolidColorBrush x:Key="Primary">#6D28D9</SolidColorBrush>
+                    <SolidColorBrush x:Key="BgMain">#080D18</SolidColorBrush>
+                    <SolidColorBrush x:Key="BgBar">#0D1422</SolidColorBrush>
+                    <SolidColorBrush x:Key="BgSide">#101A2A</SolidColorBrush>
+                    <SolidColorBrush x:Key="BgPanel">#0C1422</SolidColorBrush>
+                    <SolidColorBrush x:Key="BgHover">#152338</SolidColorBrush>
+                    <SolidColorBrush x:Key="BgFloat">#152338</SolidColorBrush>
+                    <SolidColorBrush x:Key="Line">#20344D</SolidColorBrush>
+                    <SolidColorBrush x:Key="TextMain">#E8F2FA</SolidColorBrush>
+                    <SolidColorBrush x:Key="TextMuted">#91A7BB</SolidColorBrush>
+                    <SolidColorBrush x:Key="TextDim">#647D95</SolidColorBrush>
+                    <SolidColorBrush x:Key="TextAccent">#58DDF5</SolidColorBrush>
+                    <SolidColorBrush x:Key="TextTitle">#F7FBFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="Icon">#8AA5BC</SolidColorBrush>
+                    <SolidColorBrush x:Key="IconActive">#F4FBFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="FolderIcon">#55CFF0</SolidColorBrush>
+                    <SolidColorBrush x:Key="Accent">#12BFE5</SolidColorBrush>
+                    <SolidColorBrush x:Key="Primary">#087FA6</SolidColorBrush>
                 </ResourceDictionary>
 
                 <ResourceDictionary x:Key="Light">
-                    <SolidColorBrush x:Key="BgMain">#FFFFFF</SolidColorBrush>
-                    <SolidColorBrush x:Key="BgBar">#EEEAF8</SolidColorBrush>
-                    <SolidColorBrush x:Key="BgSide">#F5F2FC</SolidColorBrush>
-                    <SolidColorBrush x:Key="BgPanel">#F3F0FA</SolidColorBrush>
-                    <SolidColorBrush x:Key="BgHover">#E6E0F5</SolidColorBrush>
-                    <SolidColorBrush x:Key="BgFloat">#FFFFFF</SolidColorBrush>
-                    <SolidColorBrush x:Key="Line">#D9D2EE</SolidColorBrush>
-                    <SolidColorBrush x:Key="TextMain">#1F1A3D</SolidColorBrush>
-                    <SolidColorBrush x:Key="TextMuted">#5E5683</SolidColorBrush>
-                    <SolidColorBrush x:Key="TextDim">#7A7399</SolidColorBrush>
-                    <SolidColorBrush x:Key="TextAccent">#6D28D9</SolidColorBrush>
-                    <SolidColorBrush x:Key="TextTitle">#1F1A3D</SolidColorBrush>
-                    <SolidColorBrush x:Key="Icon">#5B5185</SolidColorBrush>
-                    <SolidColorBrush x:Key="IconActive">#1F1A3D</SolidColorBrush>
-                    <SolidColorBrush x:Key="FolderIcon">#9333EA</SolidColorBrush>
-                    <SolidColorBrush x:Key="Accent">#7C3AED</SolidColorBrush>
-                    <SolidColorBrush x:Key="Primary">#7C3AED</SolidColorBrush>
+                    <SolidColorBrush x:Key="BgMain">#F7FBFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="BgBar">#EAF2F8</SolidColorBrush>
+                    <SolidColorBrush x:Key="BgSide">#F3F8FC</SolidColorBrush>
+                    <SolidColorBrush x:Key="BgPanel">#EAF2F8</SolidColorBrush>
+                    <SolidColorBrush x:Key="BgHover">#DDEAF3</SolidColorBrush>
+                    <SolidColorBrush x:Key="BgFloat">#F7FBFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="Line">#CBDCE8</SolidColorBrush>
+                    <SolidColorBrush x:Key="TextMain">#13283B</SolidColorBrush>
+                    <SolidColorBrush x:Key="TextMuted">#4F6B82</SolidColorBrush>
+                    <SolidColorBrush x:Key="TextDim">#6A8195</SolidColorBrush>
+                    <SolidColorBrush x:Key="TextAccent">#087FA6</SolidColorBrush>
+                    <SolidColorBrush x:Key="TextTitle">#13283B</SolidColorBrush>
+                    <SolidColorBrush x:Key="Icon">#45657E</SolidColorBrush>
+                    <SolidColorBrush x:Key="IconActive">#13283B</SolidColorBrush>
+                    <SolidColorBrush x:Key="FolderIcon">#0D9BC0</SolidColorBrush>
+                    <SolidColorBrush x:Key="Accent">#087FA6</SolidColorBrush>
+                    <SolidColorBrush x:Key="Primary">#087FA6</SolidColorBrush>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
@@ -70,8 +70,7 @@
         <KeyBinding Gesture="Ctrl+Shift+F"
                     Command="{Binding ShowPanelCommand}"
                     CommandParameter="1" />
-        <KeyBinding Gesture="Ctrl+F5" Command="{Binding RunActiveFileCommand}" />
-        <KeyBinding Gesture="F5" Command="{Binding DebugActiveFileCommand}" />
+        <!-- F5, Ctrl+F5, Maj+F5, F9, F10, F11 : traités dans MainWindow.axaml.cs (HandleRunShortcut). -->
     </Window.KeyBindings>
 
     <Window.Styles>
@@ -133,7 +132,7 @@
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Padding" Value="10,8" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="SemiBold" />
@@ -216,7 +215,7 @@
             <Setter Property="Background" Value="{DynamicResource BgHover}" />
             <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="CornerRadius" Value="10" />
             <Setter Property="Padding" Value="10,8" />
         </Style>
 
@@ -358,17 +357,39 @@
             </MenuItem>
 
             <MenuItem Header="E_xécuter">
-                <MenuItem Header="Démarrer le débogage"
-                          Click="OnStartDebug" />
-                <MenuItem Header="Exécuter sans débogage"
+                <MenuItem Header="▶  Exécuter et déboguer"
+                          InputGesture="F5"
+                          Command="{Binding StartOrContinueDebugCommand}"
+                          IsEnabled="{Binding HasFile}" />
+                <MenuItem Header="▷  Exécuter sans débogage"
                           InputGesture="Ctrl+F5"
                           Command="{Binding RunActiveFileCommand}"
                           IsEnabled="{Binding HasFile}" />
-                <MenuItem Header="Arrêter l'exécution"
-                          Command="{Binding StopExecutionCommand}"
-                          IsEnabled="{Binding IsExecuting}" />
-                <MenuItem Header="Arrêter"
-                          Command="{Binding StopDebugCommand}" />
+                <Separator />
+                <MenuItem Header="Pas à pas principal"
+                          InputGesture="F10"
+                          Command="{Binding DebugOverCommand}"
+                          IsEnabled="{Binding IsDebugging}" />
+                <MenuItem Header="Pas à pas détaillé"
+                          InputGesture="F11"
+                          Command="{Binding DebugIntoCommand}"
+                          IsEnabled="{Binding IsDebugging}" />
+                <MenuItem Header="Pas à pas sortant"
+                          InputGesture="Shift+F11"
+                          Command="{Binding DebugOutCommand}"
+                          IsEnabled="{Binding IsDebugging}" />
+                <Separator />
+                <MenuItem Header="Ajouter un point d'arrêt"
+                          InputGesture="F9"
+                          Click="OnAddBreakpoint"
+                          IsEnabled="{Binding HasFile}" />
+                <MenuItem Header="Supprimer tous les points d'arrêt"
+                          Command="{Binding ClearBreakpointsCommand}" />
+                <Separator />
+                <MenuItem Header="■  Arrêter"
+                          InputGesture="Shift+F5"
+                          Command="{Binding StopAllCommand}"
+                          IsEnabled="{Binding IsRunBusy}" />
             </MenuItem>
 
             <MenuItem Header="_Terminal">
@@ -476,7 +497,8 @@
                                     IsVisible="{Binding IsRunActive}" />
                             <Button Classes="act"
                                     Command="{Binding ShowPanelCommand}"
-                                    CommandParameter="3">
+                                    CommandParameter="3"
+                                    ToolTip.Tip="Exécuter et déboguer (F5)">
                                 <Path Classes="icon"
                                       Classes.active="{Binding IsRunActive}"
                                       Data="M5 3.5l10 6.5-10 6.5z M15.5 17.5a2.5 3.5 0 1 0 5 0 2.5 3.5 0 0 0-5 0z M14 16h1.5 M20.5 16H22 M14 20h1.5 M20.5 20H22 M18 14v7" />
@@ -576,7 +598,8 @@
                                         Click="OnNewFolderHere" />
                             </StackPanel>
 
-                            <TreeView ItemsSource="{Binding Nodes}"
+                            <TreeView x:Name="FileTree"
+                                      ItemsSource="{Binding Nodes}"
                                       Background="Transparent"
                                       Margin="4,0"
                                       SelectionChanged="OnNodeSelected"
@@ -671,186 +694,83 @@
 
                         <!-- Exécuter et déboguer -->
                         <ScrollViewer IsVisible="{Binding IsRunActive}">
-                            <StackPanel Margin="12,2,12,12" Spacing="10">
+                            <StackPanel Margin="14,16,14,16" Spacing="10">
+                                <TextBlock Text="EXÉCUTER ET DÉBOGUER" Classes="section" />
+                                <TextBlock Text="Lancez le fichier actif : le type (.cs, .csproj, .html, .py...) est détecté automatiquement."
+                                           FontSize="11" Foreground="{DynamicResource TextMuted}"
+                                           TextWrapping="Wrap" />
 
-                                <!-- Exécution simple, indépendante du débogueur -->
-                                <TextBlock Classes="section"
-                                           Text="EXÉCUTER UN PROGRAMME" />
-
-                                <TextBox Text="{Binding ExecutionExecutable}"
-                                         PlaceholderText="Programme : dotnet, python, node, monapp.exe…"
-                                         Padding="8,7"
-                                         IsEnabled="{Binding IsExecutionIdle}"
-                                         Background="{DynamicResource BgMain}"
-                                         Foreground="{DynamicResource TextMain}" />
-
-                                <TextBox Text="{Binding ExecutionArguments}"
-                                         PlaceholderText="Arguments : bin\Debug\net10.0\MonApp.dll --verbose"
-                                         Padding="8,7"
-                                         IsEnabled="{Binding IsExecutionIdle}"
-                                         Background="{DynamicResource BgMain}"
-                                         Foreground="{DynamicResource TextMain}" />
-
-                                <TextBox Text="{Binding ExecutionWorkingDirectory}"
-                                         PlaceholderText="Dossier de travail (facultatif)"
-                                         Padding="8,7"
-                                         IsEnabled="{Binding IsExecutionIdle}"
-                                         Background="{DynamicResource BgMain}"
-                                         Foreground="{DynamicResource TextMain}" />
-
-                                <TextBlock Text="ENCODAGE DE LA SORTIE"
-                                           Classes="section" />
-
-                                <ComboBox SelectedIndex="{Binding ExecutionOutputEncodingIndex}"
-                                          IsEnabled="{Binding IsExecutionIdle}"
-                                          HorizontalAlignment="Stretch">
-                                    <ComboBoxItem Content="UTF-8 (65001) — recommandé" />
-                                    <ComboBoxItem Content="CP850 — commandes Windows classiques" />
-                                </ComboBox>
-
-                                <Grid ColumnDefinitions="*,6,*">
-                                    <Button Grid.Column="0"
-                                            Content="▶ Exécuter"
-                                            Classes="primary"
-                                            Command="{Binding StartExecutionCommand}"
-                                            IsVisible="{Binding IsExecutionIdle}" />
-                                    <Button Grid.Column="2"
-                                            Content="■ Arrêter"
-                                            Classes="danger"
-                                            Command="{Binding StopExecutionCommand}"
-                                            IsVisible="{Binding IsExecuting}" />
-                                </Grid>
-
-                                <Border Classes="card"
-                                        BorderBrush="{DynamicResource Accent}"
-                                        BorderThickness="3,0,0,0">
-                                    <StackPanel Spacing="2">
-                                        <TextBlock Classes="section"
-                                                   Text="ÉTAT DE L'EXÉCUTION" />
-                                        <TextBlock Text="{Binding ExecutionStatus}"
-                                                   TextWrapping="Wrap"
-                                                   FontSize="12"
-                                                   Foreground="{DynamicResource TextMain}" />
-                                    </StackPanel>
-                                </Border>
-
-                                <Border Height="1"
-                                        Background="{DynamicResource Line}"
-                                        Margin="0,4" />
-
-                                <TextBlock Classes="section"
-                                           Text="PROGRAMME À DÉBOGUER" />
-
-                                <TextBox Text="{Binding DebugProgram}"
-                                         PlaceholderText="MonApp.dll, script.py, main.go ou exécutable compilé"
-                                         Padding="8,7"
-                                         IsEnabled="{Binding IsDebugIdle}"
-                                         Background="{DynamicResource BgMain}"
-                                         Foreground="{DynamicResource TextMain}" />
-
-                                <Button Content="Parcourir un programme..."
-                                        Classes="secondary"
-                                        Click="OnBrowseProgram"
-                                        IsEnabled="{Binding IsDebugIdle}" />
-
-                                <!-- Démarrer / arrêter -->
-                                <Button Content="▶  Démarrer le débogage"
+                                <Button Content="{Binding DebugButtonLabel}"
                                         Classes="primary"
-                                        Command="{Binding StartDebugCommand}"
-                                        IsVisible="{Binding IsDebugIdle}" />
-                                <Button Content="■  Arrêter la session"
+                                        Height="44"
+                                        FontSize="13"
+                                        Command="{Binding StartOrContinueDebugCommand}"
+                                        IsEnabled="{Binding HasFile}"
+                                        ToolTip.Tip="Exécuter et déboguer le fichier actif (F5)" />
+
+                                <Button Content="▷  Exécuter sans débogage (Ctrl+F5)"
+                                        Classes="secondary"
+                                        Height="38"
+                                        FontSize="12"
+                                        Command="{Binding RunActiveFileCommand}"
+                                        IsEnabled="{Binding HasFile}"
+                                        ToolTip.Tip="Exécuter sans débogage (Ctrl+F5)" />
+
+                                <Button Content="■  Arrêter (Maj+F5)"
                                         Classes="danger"
-                                        Command="{Binding StopDebugCommand}"
-                                        IsVisible="{Binding IsDebugging}" />
+                                        Height="38"
+                                        FontSize="12"
+                                        Command="{Binding StopAllCommand}"
+                                        IsEnabled="{Binding IsRunBusy}"
+                                        ToolTip.Tip="Arrêter le programme ou le débogage (Maj+F5)" />
 
-                                <!-- Pas à pas -->
-                                <Grid ColumnDefinitions="*,6,*"
-                                      RowDefinitions="Auto,6,Auto">
-                                    <Button Grid.Row="0" Grid.Column="0"
-                                            Classes="secondary"
-                                            Content="Continuer"
-                                            Command="{Binding DebugContinueCommand}"
-                                            IsEnabled="{Binding IsDebugging}" />
-                                    <Button Grid.Row="0" Grid.Column="2"
-                                            Classes="secondary"
-                                            Content="Pas à pas"
-                                            Command="{Binding DebugOverCommand}"
-                                            IsEnabled="{Binding IsDebugging}" />
-                                    <Button Grid.Row="2" Grid.Column="0"
-                                            Classes="secondary"
-                                            Content="Entrer"
-                                            Command="{Binding DebugIntoCommand}"
-                                            IsEnabled="{Binding IsDebugging}" />
-                                    <Button Grid.Row="2" Grid.Column="2"
-                                            Classes="secondary"
-                                            Content="Sortir"
-                                            Command="{Binding DebugOutCommand}"
-                                            IsEnabled="{Binding IsDebugging}" />
-                                </Grid>
+                                <TextBlock Text="Ouvrez et enregistrez un fichier pour commencer."
+                                           FontSize="10" Foreground="{DynamicResource TextDim}"
+                                           TextWrapping="Wrap" IsVisible="{Binding !HasFile}" />
 
-                                <!-- État de la session -->
-                                <Border Classes="card"
-                                        BorderBrush="{DynamicResource Accent}"
-                                        BorderThickness="3,0,0,0">
-                                    <StackPanel Spacing="2">
-                                        <TextBlock Classes="section"
-                                                   Text="ÉTAT" />
-                                        <TextBlock Text="{Binding DebugStatus}"
-                                                   TextWrapping="Wrap"
-                                                   FontSize="12"
-                                                   Foreground="{DynamicResource TextMain}" />
-                                    </StackPanel>
-                                </Border>
+                                <!-- Barre de débogage : visible pendant une session -->
+                                <StackPanel Spacing="6" IsVisible="{Binding IsDebugging}">
+                                    <TextBlock Text="CONTRÔLES DE DÉBOGAGE" Classes="section" />
+                                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+                                        <Button Grid.Row="0" Grid.Column="0" Content="▶ Continuer (F5)"
+                                                Classes="secondary" Margin="0,0,3,3"
+                                                Command="{Binding DebugContinueCommand}" />
+                                        <Button Grid.Row="0" Grid.Column="1" Content="⤼ Pas à pas (F10)"
+                                                Classes="secondary" Margin="3,0,0,3"
+                                                Command="{Binding DebugOverCommand}" />
+                                        <Button Grid.Row="1" Grid.Column="0" Content="↴ Entrer (F11)"
+                                                Classes="secondary" Margin="0,3,3,0"
+                                                Command="{Binding DebugIntoCommand}" />
+                                        <Button Grid.Row="1" Grid.Column="1" Content="↱ Sortir (Maj+F11)"
+                                                Classes="secondary" Margin="3,3,0,0"
+                                                Command="{Binding DebugOutCommand}" />
+                                    </Grid>
+                                </StackPanel>
 
-                                <!-- Points d'arrêt -->
-                                <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <TextBlock Classes="section"
-                                                   Text="POINTS D'ARRÊT" />
-                                        <Border Background="{DynamicResource BgHover}"
-                                                CornerRadius="9"
-                                                Padding="7,1">
-                                            <TextBlock Text="{Binding Breakpoints.Count}"
-                                                       FontSize="10"
-                                                       Foreground="{DynamicResource TextMain}" />
-                                        </Border>
-                                    </StackPanel>
-                                    <Button Grid.Column="1"
-                                            Classes="ghost"
-                                            Content="Tout supprimer"
+                                <TextBlock Text="POINTS D'ARRÊT" Classes="section" Margin="0,6,0,0" />
+                                <Grid ColumnDefinitions="*,*">
+                                    <Button Grid.Column="0" Content="● Ajouter (F9)" Classes="secondary" Margin="0,0,3,0"
+                                            Click="OnAddBreakpoint"
+                                            IsEnabled="{Binding HasFile}"
+                                            ToolTip.Tip="Ajoute un point d'arrêt à la ligne du curseur (F9)" />
+                                    <Button Grid.Column="1" Content="Tout effacer" Classes="secondary" Margin="3,0,0,0"
                                             Command="{Binding ClearBreakpointsCommand}" />
                                 </Grid>
+                                <ListBox ItemsSource="{Binding Breakpoints}"
+                                         Background="Transparent"
+                                         MaxHeight="120"
+                                         FontSize="11" />
 
-                                <Button Content="● Ajouter à la ligne du curseur"
-                                        Classes="secondary"
-                                        Click="OnAddBreakpoint" />
+                                <TextBlock Text="{Binding ExecutionStatus}"
+                                           FontSize="11" Foreground="{DynamicResource TextMuted}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding DebugStatus}"
+                                           FontSize="11" Foreground="{DynamicResource TextMuted}"
+                                           TextWrapping="Wrap" />
 
-                                <ItemsControl ItemsSource="{Binding Breakpoints}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Orientation="Horizontal"
-                                                        Spacing="8"
-                                                        Margin="2,3">
-                                                <Ellipse Width="8"
-                                                         Height="8"
-                                                         Fill="#EF4444"
-                                                         VerticalAlignment="Center" />
-                                                <TextBlock Text="{Binding}"
-                                                           FontSize="12"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Foreground="{DynamicResource TextMain}" />
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-
-                                <Border Classes="card"
-                                        IsVisible="{Binding IsDebugIdle}">
-                                    <TextBlock TextWrapping="Wrap"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource TextDim}"
-                                               Text="F5 compile puis débogue le fichier actif : C# (NetCoreDbg), Python (debugpy), Go (Delve), C / C++ / Rust (lldb-dap). L'adaptateur du langage doit être installé et dans le PATH." />
-                                </Border>
+                                <TextBlock Text="Fichiers pris en charge : .cs, .csproj, .html, .htm, .css, .js, .ts, .py, .java, .go, .c, .cpp, .rs, .php, .rb, .ps1, .sh, .bat. Le débogage pas à pas nécessite l'adaptateur du langage (NetCoreDbg pour C#) ; sans lui, F5 exécute simplement le programme."
+                                           FontSize="10" Foreground="{DynamicResource TextDim}"
+                                           TextWrapping="Wrap" />
                             </StackPanel>
                         </ScrollViewer>
 
@@ -1107,26 +1027,6 @@
                                     Margin="6,0,8,0"
                                     VerticalAlignment="Center">
                             <Button Classes="ghost"
-                                    Content="▶"
-                                    Foreground="#3FB950"
-                                    FontSize="15"
-                                    Command="{Binding RunActiveFileCommand}"
-                                    IsVisible="{Binding IsExecutionIdle}"
-                                    IsEnabled="{Binding HasFile}"
-                                    ToolTip.Tip="Exécuter le fichier actif (Ctrl+F5)" />
-                            <Button Classes="ghost"
-                                    Content="■"
-                                    Foreground="#F85149"
-                                    FontSize="15"
-                                    Command="{Binding StopExecutionCommand}"
-                                    IsVisible="{Binding IsExecuting}"
-                                    ToolTip.Tip="Arrêter l'exécution" />
-                            <Button Classes="ghost"
-                                    Content="Déboguer"
-                                    Command="{Binding DebugActiveFileCommand}"
-                                    IsEnabled="{Binding HasFile}"
-                                    ToolTip.Tip="Compiler et déboguer le fichier actif (F5)" />
-                            <Button Classes="ghost"
                                     Content="Assistant IA"
                                     Command="{Binding FocusRightAiCommand}"
                                     ToolTip.Tip="Afficher / masquer l'Assistant IA à droite" />
@@ -1138,45 +1038,45 @@
                     </Grid>
                 </Border>
 
-                <!-- Accueil -->
+                <!-- Accueil : logo en arrière-plan sur toute la zone de bienvenue -->
                 <Border Grid.Row="1"
                         Background="{DynamicResource BgMain}"
                         IsVisible="{Binding !HasFile}">
-                    <StackPanel VerticalAlignment="Center"
-                                HorizontalAlignment="Center"
-                                Spacing="10">
+                    <Grid ClipToBounds="True">
                         <Image Source="avares://App.Desktop/Assets/logo.png"
-                               Width="150"
-                               Height="150" />
-
-                        <TextBlock FontSize="46"
-                                   FontWeight="Bold"
-                                   HorizontalAlignment="Center">
-                            <Run Text="Keyce "
-                                 Foreground="{DynamicResource TextTitle}" />
-                            <Run Text="Code" Foreground="#C026D3" />
-                        </TextBlock>
-
-                        <TextBlock Text="Créez. Codez. Innovez."
-                                   FontSize="18"
-                                   FontStyle="Italic"
-                                   Foreground="{DynamicResource TextAccent}"
-                                   HorizontalAlignment="Center" />
-
-                        <StackPanel Orientation="Horizontal"
+                               Stretch="UniformToFill"
+                               Opacity="0.46" />
+                        <Border Background="#99050A1B" />
+                        <StackPanel VerticalAlignment="Center"
                                     HorizontalAlignment="Center"
-                                    Spacing="10"
-                                    Margin="0,20,0,0">
-                            <Button Content="Ouvrir un dossier..."
-                                    Click="OnOpenFolder"
-                                    Padding="20,8"
-                                    Background="{DynamicResource Primary}"
-                                    Foreground="White" />
-                            <Button Content="Ouvrir un fichier..."
-                                    Click="OnOpenFile"
-                                    Padding="20,8" />
+                                    Spacing="10">
+                            <TextBlock FontSize="48"
+                                       FontWeight="Bold"
+                                       HorizontalAlignment="Center">
+                                <Run Text="Keyce " Foreground="{DynamicResource TextTitle}" />
+                                <Run Text="Code" Foreground="#12D8F4" />
+                            </TextBlock>
+                            <TextBlock Text="Créez. Codez. Innovez."
+                                       FontSize="19"
+                                       FontStyle="Italic"
+                                       Foreground="{DynamicResource TextAccent}"
+                                       HorizontalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Center"
+                                        Spacing="10"
+                                        Margin="0,22,0,0">
+                                <Button Content="Ouvrir un dossier..."
+                                        Click="OnOpenFolder"
+                                        Padding="20,9"
+                                        Background="{DynamicResource Primary}"
+                                        Foreground="White" />
+                                <Button Content="Ouvrir un fichier..."
+                                        Click="OnOpenFile"
+                                        Padding="20,9"
+                                        Classes="secondary" />
+                            </StackPanel>
                         </StackPanel>
-                    </StackPanel>
+                    </Grid>
                 </Border>
 
                 <!-- Éditeur -->
@@ -1349,28 +1249,23 @@
 
                             <!-- Sortie -->
                             <DockPanel IsVisible="{Binding IsOutputTab}">
-                                <!-- Saisie pour le programme en cours (entrée standard) -->
-                                <Grid DockPanel.Dock="Bottom"
+                                <Grid DockPanel.Dock="Top"
                                       ColumnDefinitions="*,Auto"
-                                      Margin="8,4"
-                                      IsVisible="{Binding IsExecuting}">
-                                    <TextBox Grid.Column="0"
-                                             x:Name="ExecutionInputBox"
-                                             Text="{Binding ExecutionInput}"
-                                             PlaceholderText="Saisie du programme — Entrée pour envoyer"
-                                             FontFamily="Consolas,Cascadia Mono,monospace"
-                                             FontSize="12">
-                                        <TextBox.KeyBindings>
-                                            <KeyBinding Gesture="Enter"
-                                                        Command="{Binding SendExecutionInputCommand}" />
-                                        </TextBox.KeyBindings>
-                                    </TextBox>
+                                      Margin="8,4,8,6">
+                                    <TextBlock Grid.Column="0"
+                                               Text="SORTIE"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextMuted}"
+                                               FontSize="11" />
                                     <Button Grid.Column="1"
-                                            Content="Envoyer"
-                                            Margin="6,0,0,0"
-                                            Command="{Binding SendExecutionInputCommand}" />
+                                            Content="✕ Effacer"
+                                            Command="{Binding ClearOutputCommand}"
+                                            ToolTip.Tip="Effacer le contenu de la sortie"
+                                            Padding="8,4"
+                                            FontSize="11"
+                                            Background="Transparent"
+                                            Foreground="{DynamicResource TextAccent}" />
                                 </Grid>
-
                                 <TextBox Text="{Binding OutputText}"
                                          IsReadOnly="True"
                                          AcceptsReturn="True"
