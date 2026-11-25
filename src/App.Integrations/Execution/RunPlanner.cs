@@ -16,6 +16,14 @@ public sealed class RunPlanner : IRunPlanner
     private static readonly IReadOnlyDictionary<string, string> PythonEnvironment =
         new Dictionary<string, string> { ["PYTHONIOENCODING"] = "utf-8" };
 
+    private static readonly IReadOnlyDictionary<string, string> DotnetEnvironment =
+        new Dictionary<string, string>
+        {
+            ["DOTNET_NOLOGO"] = "1",
+            ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1",
+            ["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1"
+        };
+
     private readonly Func<string, string?> _locate;
 
     public RunPlanner() : this(ToolLocator.FindOnPath)
@@ -42,6 +50,9 @@ public sealed class RunPlanner : IRunPlanner
             ".csproj" => PlanCSharpProject(file),
 
             ".html" or ".htm" => PlanHtmlPreview(file, directory),
+
+            // Une feuille de style s'applique à une page : on ouvre la page HTML voisine.
+            ".css" => PlanHtmlPreview(RequireSiblingHtml(file, directory), directory),
 
             ".py" => Single(
                 "python", "Python", file,
@@ -206,7 +217,8 @@ public sealed class RunPlanner : IRunPlanner
             new ExecutionStartOptions(
                 dotnet,
                 new[] { "build", project, "-c", "Debug", "-nologo" },
-                workingDirectory));
+                workingDirectory,
+                DotnetEnvironment));
 
         return new RunPlan("csharp", "C# (.NET)", new[] { step });
     }
@@ -250,7 +262,8 @@ public sealed class RunPlanner : IRunPlanner
             return Single(
                 "csharp", "C# (.NET)", file, dotnet,
                 new[] { "run", "--project", project },
-                Path.GetDirectoryName(project)!);
+                Path.GetDirectoryName(project)!,
+                DotnetEnvironment);
         }
 
         // Fichier isolé : générer un petit projet temporaire pour rester compatible avec les SDK .NET 8+.
@@ -258,7 +271,8 @@ public sealed class RunPlanner : IRunPlanner
         return Single(
             "csharp", "C# (fichier isolé)", file, dotnet,
             new[] { "run", "--project", standaloneProject },
-            directory);
+            directory,
+            DotnetEnvironment);
     }
 
     private RunPlan PlanCSharpProject(string projectFile)
@@ -268,7 +282,8 @@ public sealed class RunPlanner : IRunPlanner
         return Single(
             "csharp", "C# (.NET)", projectFile, dotnet,
             new[] { "run", "--project", projectFile },
-            projectDirectory);
+            projectDirectory,
+            DotnetEnvironment);
     }
 
     private RunPlan PlanHtmlPreview(string file, string directory)
@@ -276,7 +291,17 @@ public sealed class RunPlanner : IRunPlanner
         if (OperatingSystem.IsWindows())
         {
             string shell = Require("Invite de commandes Windows", "cmd.exe", "cmd");
-            return Single("html", "HTML (navigateur)", file, shell, new[] { "/c", "start", "", file }, directory);
+
+            // Arguments bruts : le chemin est mis entre guillemets pour cmd (espaces, « # », « & »...),
+            // et le titre vide "" évite que « start » prenne le chemin pour un titre de fenêtre.
+            var step = new RunStep(
+                "Ouverture de " + Path.GetFileName(file) + " dans le navigateur",
+                new ExecutionStartOptions(
+                    shell,
+                    WorkingDirectory: directory,
+                    RawArguments: "/c start \"\" \"" + file + "\""));
+
+            return new RunPlan("html", "HTML (navigateur)", new[] { step });
         }
 
         if (OperatingSystem.IsMacOS())
@@ -287,6 +312,32 @@ public sealed class RunPlanner : IRunPlanner
 
         string linuxOpener = Require("Navigateur par défaut", "xdg-open");
         return Single("html", "HTML (navigateur)", file, linuxOpener, new[] { file }, directory);
+    }
+
+    /// <summary>Page HTML à ouvrir pour un fichier CSS : index.html du dossier (ou d'un dossier parent proche), sinon la première page.</summary>
+    private static string RequireSiblingHtml(string file, string directory)
+    {
+        DirectoryInfo? current = new(directory);
+
+        for (int level = 0; level < 3 && current is not null; level++, current = current.Parent)
+        {
+            string index = Path.Combine(current.FullName, "index.html");
+
+            if (File.Exists(index))
+                return index;
+
+            string[] pages = Directory.GetFiles(current.FullName, "*.html");
+
+            if (pages.Length > 0)
+            {
+                Array.Sort(pages, StringComparer.OrdinalIgnoreCase);
+                return pages[0];
+            }
+        }
+
+        throw new NotSupportedException(
+            "Un fichier CSS ne se lance pas seul : il est appliqué par une page HTML. "
+            + "Ajoutez ou ouvrez un fichier .html pour voir le résultat.");
     }
 
     /// <summary>

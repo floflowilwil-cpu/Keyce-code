@@ -1173,6 +1173,18 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private bool _isTerminalRunning;
 
+    /// <summary>Vrai tant que l'écran du terminal affiche la sortie d'un programme lancé par Exécuter / Déboguer.</summary>
+    private bool _terminalShowsProgram;
+
+    /// <summary>Message discret en fin de sortie (ex. « Processus terminé (code 0) »).</summary>
+    private void EmitTerminalNotice(string text)
+    {
+        ExecutionTerminalOutputReceived?.Invoke(
+            "\r\n\u001b[90m[" + text + "]\u001b[0m\r\n");
+
+        TerminalStatus = text + " — cliquez sur « Démarrer » pour ouvrir un shell.";
+    }
+
     [ObservableProperty]
     private string _terminalStatus = "Aucun terminal actif.";
 
@@ -1182,6 +1194,11 @@ public partial class MainWindowViewModel : ObservableObject
     public async Task EnsureTerminalAsync()
     {
         if (IsExecuting || IsExecutionStarting)
+            return;
+
+        // La sortie du dernier programme reste affichée : un nouveau shell l'effacerait ou s'y superposerait.
+        // L'utilisateur ouvre un shell avec « Démarrer ».
+        if (_terminalShowsProgram)
             return;
 
         if (IsTerminalRunning || _terminalSessionId.HasValue)
@@ -1201,6 +1218,10 @@ public partial class MainWindowViewModel : ObservableObject
 
         try
         {
+            // Écran propre avant le shell : sinon son invite se superpose à l'ancienne sortie.
+            ExecutionTerminalResetRequested?.Invoke();
+            _terminalShowsProgram = false;
+
             string? workingDirectory =
                 _s.Workspace.Current?.RootPath;
 
@@ -1257,6 +1278,7 @@ public partial class MainWindowViewModel : ObservableObject
             }
         }
 
+        _terminalShowsProgram = true;
         TerminalStatus = "Exécution dans le terminal…";
         ExecutionTerminalResetRequested?.Invoke();
     }
