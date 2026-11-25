@@ -30,6 +30,7 @@ public partial class MainWindowViewModel
             else if (e.PropertyName is "StagedFiles" or "UnstagedFiles") UI(UpdateGitCounts);
         };
         _s.Execution.OutputReceived += (_, e) => UI(() => OnExecutionOutputReceived(e));
+        _s.Debugger.OutputReceived += (_, e) => UI(() => OnDebugOutput(e));
         _s.Extensions.ExtensionChanged += (_, _) => UI(() => _ = RefreshExtensionsAsync());
         _s.CommandRegistry.CommandsChanged += (_, _) => UI(RefreshExtensionCommands);
         _s.ExtensionCatalog.DownloadProgressChanged += (_, p) => UI(() =>
@@ -582,13 +583,18 @@ public partial class MainWindowViewModel
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsExecutionIdle))]
+    [NotifyPropertyChangedFor(nameof(IsRunBusy))]
     private bool _isExecutionStarting;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsExecutionIdle))]
+    [NotifyPropertyChangedFor(nameof(IsRunBusy))]
     private bool _isExecuting;
 
     public bool IsExecutionIdle => !IsExecuting && !IsExecutionStarting;
+
+    /// <summary>Vrai quand un programme s'exécute ou qu'une session de débogage est ouverte (bouton Arrêter).</summary>
+    public bool IsRunBusy => IsExecuting || IsExecutionStarting || IsDebugging;
 
     [RelayCommand]
     private async Task StartExecution()
@@ -692,7 +698,7 @@ public partial class MainWindowViewModel
                 ExecutionStatus = $"Programme terminé (code de sortie : {result.ExitCode}).";
                 Log($"Processus terminé avec le code {result.ExitCode}.");
                 ShowTerminal();
-                _ = EnsureTerminalAsync();
+                EmitTerminalNotice($"Processus terminé (code {result.ExitCode})");
             });
         }
         catch (Exception ex)
@@ -707,7 +713,7 @@ public partial class MainWindowViewModel
                 ExecutionStatus = "Erreur pendant l'exécution : " + ex.Message;
                 Log("Exécution : " + ex.Message);
                 ShowTerminal();
-                _ = EnsureTerminalAsync();
+                EmitTerminalNotice("Erreur pendant l'exécution : " + ex.Message);
             });
         }
     }
@@ -799,8 +805,17 @@ public partial class MainWindowViewModel
     [RelayCommand]
     private async Task RunActiveFile()
     {
-        if (!IsExecutionIdle)
+        if (IsDebugging)
+        {
+            ReportRunBusy("Un débogage est en cours : arrêtez-le (Maj+F5) avant d'exécuter sans débogage.");
             return;
+        }
+
+        if (!IsExecutionIdle)
+        {
+            ReportRunBusy("Un programme est déjà en cours d'exécution : arrêtez-le (Maj+F5) puis relancez.");
+            return;
+        }
 
         RunPlan? plan = await PreparePlanAsync(path => _s.RunPlanner.PlanRun(path));
         if (plan is null)
@@ -809,15 +824,46 @@ public partial class MainWindowViewModel
         await ExecutePlanAsync(plan);
     }
 
+    /// <summary>F5 : démarre le débogage, ou continue l'exécution si une session est déjà ouverte.</summary>
+    [RelayCommand]
+    private async Task StartOrContinueDebug()
+    {
+        if (IsDebugging)
+            await DebugStepAsync(StepKind.Continue);
+        else
+            await DebugActiveFile();
+    }
+
+    /// <summary>Maj+F5 : arrête le débogage ou le programme en cours.</summary>
+    [RelayCommand]
+    private async Task StopAll()
+    {
+        if (IsDebugging)
+            await StopDebug();
+        else if (IsExecuting || IsExecutionStarting)
+            await StopExecution();
+    }
+
+    private static bool IsWebPreviewFile(string path) =>
+        Path.GetExtension(path).ToLowerInvariant() is ".html" or ".htm" or ".css";
+
     [RelayCommand]
     private async Task DebugActiveFile()
     {
-        if (IsDebugging || !IsExecutionIdle)
+        if (IsDebugging || _debugStarting)
+        {
+            ReportRunBusy("Un débogage est déjà en cours : continuez (F5) ou arrêtez-le (Maj+F5).");
             return;
+        }
+
+        if (!IsExecutionIdle)
+        {
+            ReportRunBusy("Un programme est déjà en cours d'exécution : arrêtez-le (Maj+F5) puis relancez.");
+            return;
+        }
 
         string? sourcePath = ActiveTab?.Path;
-        if (sourcePath is not null
-            && (Path.GetExtension(sourcePath).ToLowerInvariant() is ".html" or ".htm"))
+        if (sourcePath is not null && IsWebPreviewFile(sourcePath))
         {
             // Comme dans VS Code avec un workspace web sans adaptateur navigateur : F5 ouvre
             // l'aperçu HTML. On n'annonce pas un débogage pas-à-pas qui n'existe pas.
@@ -827,31 +873,52 @@ public partial class MainWindowViewModel
 
             int? previewExitCode = await ExecutePlanAsync(preview);
             DebugStatus = previewExitCode == 0
-                ? "Aperçu HTML ouvert dans le navigateur. Le débogage JavaScript dans le navigateur nécessite un adaptateur dédié."
-                : "Impossible d'ouvrir l'aperçu HTML. Consultez le terminal pour le détail.";
+                ? "Aperçu ouvert dans le navigateur. Le débogage JavaScript dans le navigateur nécessite un adaptateur dédié."
+                : "Impossible d'ouvrir l'aperçu. Consultez le terminal pour le détail.";
             return;
         }
 
         DebugPlan? debugPlan = null;
+        string? notDebuggableReason = null;
+
         RunPlan? plan = await PreparePlanAsync(path =>
         {
-            debugPlan = _s.RunPlanner.PlanDebug(path);
+            try
+            {
+                debugPlan = _s.RunPlanner.PlanDebug(path);
+            }
+            catch (NotSupportedException ex)
+            {
+                // Pas d'adaptateur pour ce type de fichier : on l'exécute simplement (comme Ctrl+F5).
+                notDebuggableReason = ex.Message;
+                return _s.RunPlanner.PlanRun(path);
+            }
 
             // Sans compilation (Python, Go), le plan est vide : il ne sert qu'à signaler les erreurs.
             return debugPlan.Build
                 ?? new RunPlan(debugPlan.LanguageId, debugPlan.DisplayName, Array.Empty<RunStep>());
         });
 
-        if (plan is null || debugPlan is null || sourcePath is null)
+        if (plan is null || sourcePath is null)
         {
             DebugStatus = ExecutionStatus;
             return;
         }
 
-        if (debugPlan.Build is { Steps.Count: > 0 } build)
+        if (debugPlan is null)
+        {
+            DebugStatus = "Débogage indisponible pour ce type de fichier : exécution sans débogage.";
+            Log("Débogage : " + notDebuggableReason);
+            await ExecutePlanAsync(plan);
+            return;
+        }
+
+        bool hasBuild = debugPlan.Build is { Steps.Count: > 0 };
+
+        if (hasBuild)
         {
             DebugStatus = "Compilation…";
-            int? exitCode = await ExecutePlanAsync(build);
+            int? exitCode = await ExecutePlanAsync(debugPlan.Build!);
             if (exitCode != 0)
             {
                 DebugStatus = "La compilation a échoué : débogage annulé.";
@@ -875,7 +942,40 @@ public partial class MainWindowViewModel
         _debugLanguageId = debugPlan.LanguageId;
         _debugWorkingDirectory = debugPlan.Build?.Steps.LastOrDefault()?.Options.WorkingDirectory
             ?? Path.GetDirectoryName(sourcePath);
-        await StartDebug();
+
+        bool started = await StartDebugCoreAsync(prepareTerminal: !hasBuild);
+
+        if (started)
+        {
+            // Comme dans VS Code : F5 lance le programme jusqu'au premier point d'arrêt (ou jusqu'à la fin).
+            await DebugStepAsync(StepKind.Continue);
+            return;
+        }
+
+        // Débogueur absent ou mal installé : F5 doit quand même lancer le programme.
+        if (_lastDebugStartError is { } error && IsDebuggerMissing(error))
+        {
+            string reason = error.Message;
+            RunPlan? runPlan = await PreparePlanAsync(path => _s.RunPlanner.PlanRun(path));
+            if (runPlan is not null)
+            {
+                await ExecutePlanAsync(runPlan);
+                DebugStatus = "Débogueur indisponible : le programme a été exécuté sans débogage. " + reason;
+            }
+        }
+    }
+
+    private static bool IsDebuggerMissing(Exception error) =>
+        error is FileNotFoundException
+        || error.Message.Contains("Installez", StringComparison.OrdinalIgnoreCase)
+        || error.Message.Contains("introuvable", StringComparison.OrdinalIgnoreCase);
+
+    private void ReportRunBusy(string message)
+    {
+        StatusMessage = message;
+        ExecutionStatus = message;
+        Log("Exécution : " + message);
+        ShowTerminal();
     }
 
     /// <summary>Vérifie le fichier actif (enregistré, sauvegardé) puis demande son plan au planificateur.</summary>
@@ -949,6 +1049,10 @@ public partial class MainWindowViewModel
             IsExecutionStarting = false;
         }
 
+        bool lastIsBuild = plan.Steps.Count > 0
+            && plan.Steps[Math.Min(stepIndex, lastIndex)].Description.StartsWith(
+                "Compilation", StringComparison.Ordinal);
+
         if (exitCode is { } code)
         {
             bool compileFailed = code != 0 && stepIndex < lastIndex;
@@ -956,10 +1060,22 @@ public partial class MainWindowViewModel
                 ? $"La compilation a échoué (code de sortie : {code})."
                 : $"Programme terminé (code de sortie : {code}).";
             Log(ExecutionStatus);
+
+            // Message dans le terminal lui-même : la sortie du programme reste visible
+            // (aucun nouveau shell n'est lancé par-dessus).
+            if (lastIsBuild && code == 0)
+                EmitTerminalNotice("Compilation réussie");
+            else if (lastIsBuild || compileFailed)
+                EmitTerminalNotice($"La compilation a échoué (code {code})");
+            else
+                EmitTerminalNotice($"Processus terminé (code {code})");
+        }
+        else
+        {
+            EmitTerminalNotice(ExecutionStatus);
         }
 
         ShowTerminal();
-        _ = EnsureTerminalAsync();
         return exitCode;
     }
 
@@ -973,7 +1089,10 @@ public partial class MainWindowViewModel
         ExecutionSessionId id;
         try
         {
-            ExecutionStartOptions options = step.Options with { OutputCodePage = ExecutionOutputCodePage };
+            // Par défaut : UTF-8 avec détection automatique de la page de codes de la console (voir ExecutionService).
+            ExecutionStartOptions options = ExecutionOutputEncodingIndex == 1
+                ? step.Options with { OutputCodePage = ExecutionOutputCodePage }
+                : step.Options;
             id = await _s.Execution.StartExecutionAsync(options);
         }
         catch (Exception ex)
@@ -1116,10 +1235,11 @@ public partial class MainWindowViewModel
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDebugIdle))]
     [NotifyPropertyChangedFor(nameof(DebugButtonLabel))]
+    [NotifyPropertyChangedFor(nameof(IsRunBusy))]
     private bool _isDebugging;
 
     public bool IsDebugIdle => !IsDebugging;
-    public string DebugButtonLabel => IsDebugging ? "■  Arrêter le débogage" : "▶  Run and Debug";
+    public string DebugButtonLabel => IsDebugging ? "▶  Continuer (F5)" : "▶  Exécuter et déboguer (F5)";
 
     public void AddBreakpointAtCaret()
     {
@@ -1156,24 +1276,49 @@ public partial class MainWindowViewModel
         DebugStatus = "Liste vidée (effective à la prochaine session).";
     }
 
+    private bool _debugStarting;
+    private bool _debugStepping;
+    private bool _debugStopRequested;
+    private Exception? _lastDebugStartError;
+
     [RelayCommand]
-    private async Task StartDebug()
+    private async Task StartDebug() =>
+        await StartDebugCoreAsync(prepareTerminal: true);
+
+    /// <summary>Démarre la session de débogage. Retourne false (et mémorise l'erreur) en cas d'échec.</summary>
+    private async Task<bool> StartDebugCoreAsync(bool prepareTerminal)
     {
-        if (IsDebugging) return;
+        if (IsDebugging || _debugStarting)
+            return false;
+
+        _lastDebugStartError = null;
+        _debugStopRequested = false;
+
         string program = DebugProgram.Trim();
         if (program.Length == 0)
         {
             DebugStatus = "Indiquez le programme à déboguer (.dll, .py, .go ou exécutable).";
-            return;
+            return false;
         }
+
+        _debugStarting = true;
 
         try
         {
-            DebugStatus = "Démarrage…";
+            DebugStatus = "Démarrage du débogueur…";
+
+            // Le programme débogué écrit dans le terminal intégré : le shell est fermé et l'écran effacé,
+            // sauf si la compilation vient de le faire (on garde alors sa sortie).
+            if (prepareTerminal)
+                await PrepareTerminalForExecutionAsync();
+
+            ShowTerminal();
+
             string? languageId = _debugLanguageId;
             string? workingDirectory = _debugWorkingDirectory;
             _debugLanguageId = null;
             _debugWorkingDirectory = null;
+
             var id = await _s.Debugger.StartDebugAsync(
                 new DebugStartOptions(program, WorkingDirectory: workingDirectory, LanguageId: languageId));
             _debugId = id;
@@ -1182,16 +1327,35 @@ public partial class MainWindowViewModel
             foreach (var bp in _breakpoints.ToList())
                 await _s.Debugger.SetBreakpointAsync(id, bp);
 
-            DebugStatus = "En pause au point d'entrée. Continuez ou avancez pas à pas.";
+            DebugStatus = "Débogage démarré. Continuez (F5) ou avancez pas à pas (F10, F11).";
             Log("Débogage démarré : " + program);
+            return true;
         }
         catch (Exception ex)
         {
+            _lastDebugStartError = ex;
             _debugId = null;
             IsDebugging = false;
             DebugStatus = ex.Message;
             Log("Débogage : " + ex.Message);
+            return false;
         }
+        finally
+        {
+            _debugStarting = false;
+        }
+    }
+
+    private void OnDebugOutput(DebugOutputEventArgs e)
+    {
+        if (!_debugStarting && _debugId is null)
+            return;
+
+        if (_debugId is { } activeId && activeId != e.SessionId)
+            return;
+
+        OutputText += e.Text;
+        ExecutionTerminalOutputReceived?.Invoke(e.Text);
     }
 
     [RelayCommand] private Task DebugContinue() => DebugStepAsync(StepKind.Continue);
@@ -1201,33 +1365,61 @@ public partial class MainWindowViewModel
 
     private async Task DebugStepAsync(StepKind kind)
     {
-        if (_debugId is not { } id) return;
+        if (_debugId is not { } id || _debugStepping)
+            return;
+
+        _debugStepping = true;
+
         try
         {
-            DebugStatus = kind == StepKind.Continue ? "Exécution…" : "Pas à pas…";
-            await _s.Debugger.StepAsync(id, kind);
-            DebugStopInfo stop = await _s.Debugger.WaitForStopAsync(id);
+            DebugStatus = kind == StepKind.Continue
+                ? "Exécution en cours… (Maj+F5 pour arrêter)"
+                : "Pas à pas…";
 
-            DebugStatus = $"Arrêt : {stop.Reason}" + (stop.Line is { } l ? $", ligne {l}" : "");
-            if (stop.SourcePath is { } source && File.Exists(source))
+            await _s.Debugger.StepAsync(id, kind);
+
+            while (true)
             {
-                await OpenPathAsync(source);
-                if (stop.Line is { } line) GoToLine(line);
+                try
+                {
+                    DebugStopInfo stop = await _s.Debugger.WaitForStopAsync(id);
+
+                    DebugStatus = $"Arrêt : {stop.Reason}" + (stop.Line is { } l ? $", ligne {l}" : "");
+                    if (stop.SourcePath is { } source && File.Exists(source))
+                    {
+                        await OpenPathAsync(source);
+                        if (stop.Line is { } line) GoToLine(line);
+                    }
+
+                    return;
+                }
+                catch (TimeoutException)
+                {
+                    // Le programme tourne toujours (calcul long, attente d'une saisie…) : on continue d'attendre
+                    // tant que la session existe ; l'utilisateur peut l'arrêter avec Maj+F5.
+                    if (_debugId != id || !IsDebugging)
+                        return;
+                }
             }
-        }
-        catch (TimeoutException)
-        {
-            DebugStatus = "Le programme tourne toujours (aucun arrêt). Posez un point d'arrêt ou arrêtez la session.";
         }
         catch (InvalidOperationException ex)
         {
             // Session terminée (le programme est arrivé au bout).
-            EndDebug(ex.Message);
+            if (_debugId == id && !_debugStopRequested)
+            {
+                EndDebug("Le programme s'est terminé : session de débogage fermée.");
+                EmitTerminalNotice("Débogage terminé");
+                Log("Débogage : " + ex.Message);
+            }
         }
         catch (Exception ex)
         {
             DebugStatus = ex.Message;
             Log("Débogage : " + ex.Message);
+        }
+        finally
+        {
+            _debugStepping = false;
         }
     }
 
@@ -1244,17 +1436,34 @@ public partial class MainWindowViewModel
     private async Task StopDebug()
     {
         if (_debugId is not { } id) return;
+
+        _debugStopRequested = true;
+        DebugStatus = "Arrêt du débogage…";
         try { await _s.Debugger.StopDebugAsync(id); }
         catch (Exception ex) { Log("Débogage : " + ex.Message); }
-        EndDebug("Session arrêtée.");
+
+        EndDebug("Session arrêtée.", release: false);
+        EmitTerminalNotice("Débogage arrêté");
     }
 
-    private void EndDebug(string message)
+    private void EndDebug(string message, bool release = true)
     {
+        DebugSessionId? id = _debugId;
+
         _debugId = null;
         IsDebugging = false;
         DebugStatus = message;
         Log("Débogage : " + message);
+
+        if (release && id is { } sessionId)
+            _ = ReleaseDebugSessionAsync(sessionId);
+    }
+
+    /// <summary>Libère l'adaptateur de débogage d'une session terminée d'elle-même.</summary>
+    private async Task ReleaseDebugSessionAsync(DebugSessionId id)
+    {
+        try { await _s.Debugger.StopDebugAsync(id); }
+        catch (Exception) { /* session déjà fermée */ }
     }
 
     // =====================================================================

@@ -21,6 +21,8 @@ public sealed class DebugService : IDebugService
 
         public DebugAdapterDefinition Adapter { get; } = adapter;
 
+        public DebugSessionId Id { get; set; }
+
         /// <summary>Flux d'écriture des requêtes DAP (stdin du processus ou socket TCP).</summary>
         public Stream? Input { get; set; }
 
@@ -88,6 +90,30 @@ public sealed class DebugService : IDebugService
         _sessions = new();
 
     private readonly DebugAdapterRegistry _registry;
+
+    public event EventHandler<DebugOutputEventArgs>? OutputReceived;
+
+    private void RaiseOutput(DebugSession session, string category, string text)
+    {
+        var handlers = OutputReceived;
+
+        if (handlers is null)
+            return;
+
+        var args = new DebugOutputEventArgs(session.Id, category, text);
+
+        foreach (Delegate callback in handlers.GetInvocationList())
+        {
+            try
+            {
+                ((EventHandler<DebugOutputEventArgs>)callback)(this, args);
+            }
+            catch
+            {
+                // Un abonné défaillant ne doit pas interrompre la lecture DAP.
+            }
+        }
+    }
 
     public DebugService() : this(DebugAdapterRegistry.CreateDefault())
     {
@@ -170,6 +196,7 @@ public sealed class DebugService : IDebugService
 
             session = new DebugSession(process, adapter);
             sessionId = DebugSessionId.New();
+            session.Id = sessionId;
 
             if (!_sessions.TryAdd(sessionId, session))
                 throw new InvalidOperationException(
@@ -570,17 +597,26 @@ public sealed class DebugService : IDebugService
 
         DebugStopInfo stop;
 
+        // Le délai est porté par le jeton de lecture lui-même : une lecture abandonnée par
+        // WaitAsync resterait en attente dans le canal et volerait l'arrêt suivant.
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+
         try
         {
             stop = await session.StopEvents.Reader
-                .ReadAsync(ct)
-                .AsTask()
-                .WaitAsync(TimeSpan.FromSeconds(30), ct);
+                .ReadAsync(timeout.Token)
+                .AsTask();
         }
         catch (ChannelClosedException)
         {
             throw new InvalidOperationException(
                 "La session de débogage est terminée. Aucun nouvel arrêt n'est disponible.");
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                "Aucun arrêt du débogueur dans le délai imparti.");
         }
 
         if (session.Process.HasExited || session.Ended.Task.IsCompleted)
@@ -885,7 +921,7 @@ public sealed class DebugService : IDebugService
         }
     }
 
-    private static void HandleEvent(
+    private void HandleEvent(
         DebugSession session,
         JsonObject message)
     {
@@ -897,6 +933,24 @@ public sealed class DebugService : IDebugService
             case "initialized":
                 session.Initialized.TrySetResult(true);
                 break;
+
+            case "output":
+            {
+                JsonObject? outputBody = message["body"] as JsonObject;
+
+                string category =
+                    outputBody?["category"]?.GetValue<string>() ?? "console";
+
+                string text =
+                    outputBody?["output"]?.GetValue<string>() ?? "";
+
+                // Seule la sortie du programme intéresse l'utilisateur : les messages internes
+                // du débogueur (chargement de modules, etc.) ne sont pas relayés.
+                if (text.Length > 0 && (category is "stdout" or "stderr"))
+                    RaiseOutput(session, category, text);
+
+                break;
+            }
 
             case "stopped":
             {

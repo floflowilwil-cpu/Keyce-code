@@ -70,8 +70,7 @@
         <KeyBinding Gesture="Ctrl+Shift+F"
                     Command="{Binding ShowPanelCommand}"
                     CommandParameter="1" />
-        <KeyBinding Gesture="Ctrl+F5" Command="{Binding RunActiveFileCommand}" />
-        <KeyBinding Gesture="F5" Command="{Binding DebugActiveFileCommand}" />
+        <!-- F5, Ctrl+F5, Maj+F5, F9, F10, F11 : traités dans MainWindow.axaml.cs (HandleRunShortcut). -->
     </Window.KeyBindings>
 
     <Window.Styles>
@@ -360,19 +359,37 @@
             <MenuItem Header="E_xécuter">
                 <MenuItem Header="▶  Exécuter et déboguer"
                           InputGesture="F5"
-                          Command="{Binding DebugActiveFileCommand}"
+                          Command="{Binding StartOrContinueDebugCommand}"
                           IsEnabled="{Binding HasFile}" />
                 <MenuItem Header="▷  Exécuter sans débogage"
                           InputGesture="Ctrl+F5"
                           Command="{Binding RunActiveFileCommand}"
                           IsEnabled="{Binding HasFile}" />
                 <Separator />
-                <MenuItem Header="Arrêter l'exécution"
-                          Command="{Binding StopExecutionCommand}"
-                          IsEnabled="{Binding IsExecuting}" />
-                <MenuItem Header="Arrêter le débogage"
-                          Command="{Binding StopDebugCommand}"
+                <MenuItem Header="Pas à pas principal"
+                          InputGesture="F10"
+                          Command="{Binding DebugOverCommand}"
                           IsEnabled="{Binding IsDebugging}" />
+                <MenuItem Header="Pas à pas détaillé"
+                          InputGesture="F11"
+                          Command="{Binding DebugIntoCommand}"
+                          IsEnabled="{Binding IsDebugging}" />
+                <MenuItem Header="Pas à pas sortant"
+                          InputGesture="Shift+F11"
+                          Command="{Binding DebugOutCommand}"
+                          IsEnabled="{Binding IsDebugging}" />
+                <Separator />
+                <MenuItem Header="Ajouter un point d'arrêt"
+                          InputGesture="F9"
+                          Click="OnAddBreakpoint"
+                          IsEnabled="{Binding HasFile}" />
+                <MenuItem Header="Supprimer tous les points d'arrêt"
+                          Command="{Binding ClearBreakpointsCommand}" />
+                <Separator />
+                <MenuItem Header="■  Arrêter"
+                          InputGesture="Shift+F5"
+                          Command="{Binding StopAllCommand}"
+                          IsEnabled="{Binding IsRunBusy}" />
             </MenuItem>
 
             <MenuItem Header="_Terminal">
@@ -675,34 +692,84 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- Run and Debug : une seule action principale, comme VS Code -->
+                        <!-- Exécuter et déboguer -->
                         <ScrollViewer IsVisible="{Binding IsRunActive}">
-                            <StackPanel Margin="14,16,14,16" Spacing="14">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <StackPanel Spacing="4">
-                                        <TextBlock Text="EXÉCUTER ET DÉBOGUER" Classes="section" />
-                                        <TextBlock Text="Lancez le projet actif avec le débogueur."
-                                                   FontSize="11" Foreground="{DynamicResource TextMuted}"
-                                                   TextWrapping="Wrap" />
-                                    </StackPanel>
-                                    <Border Grid.Column="1" Background="{DynamicResource BgHover}"
-                                            CornerRadius="12" Padding="8,3" VerticalAlignment="Top">
-                                        <TextBlock Text="F5" FontSize="10" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextAccent}" />
-                                    </Border>
-                                </Grid>
+                            <StackPanel Margin="14,16,14,16" Spacing="10">
+                                <TextBlock Text="EXÉCUTER ET DÉBOGUER" Classes="section" />
+                                <TextBlock Text="Lancez le fichier actif : le type (.cs, .csproj, .html, .py...) est détecté automatiquement."
+                                           FontSize="11" Foreground="{DynamicResource TextMuted}"
+                                           TextWrapping="Wrap" />
+
                                 <Button Content="{Binding DebugButtonLabel}"
                                         Classes="primary"
-                                        Height="46"
-                                        FontSize="14"
-                                        Command="{Binding ToggleDebugCommand}"
+                                        Height="44"
+                                        FontSize="13"
+                                        Command="{Binding StartOrContinueDebugCommand}"
                                         IsEnabled="{Binding HasFile}"
-                                        ToolTip.Tip="Lancer ou arrêter le débogage (F5 pour démarrer)" />
+                                        ToolTip.Tip="Exécuter et déboguer le fichier actif (F5)" />
+
+                                <Button Content="▷  Exécuter sans débogage (Ctrl+F5)"
+                                        Classes="secondary"
+                                        Height="38"
+                                        FontSize="12"
+                                        Command="{Binding RunActiveFileCommand}"
+                                        IsEnabled="{Binding HasFile}"
+                                        ToolTip.Tip="Exécuter sans débogage (Ctrl+F5)" />
+
+                                <Button Content="■  Arrêter (Maj+F5)"
+                                        Classes="danger"
+                                        Height="38"
+                                        FontSize="12"
+                                        Command="{Binding StopAllCommand}"
+                                        IsEnabled="{Binding IsRunBusy}"
+                                        ToolTip.Tip="Arrêter le programme ou le débogage (Maj+F5)" />
+
                                 <TextBlock Text="Ouvrez et enregistrez un fichier pour commencer."
                                            FontSize="10" Foreground="{DynamicResource TextDim}"
                                            TextWrapping="Wrap" IsVisible="{Binding !HasFile}" />
+
+                                <!-- Barre de débogage : visible pendant une session -->
+                                <StackPanel Spacing="6" IsVisible="{Binding IsDebugging}">
+                                    <TextBlock Text="CONTRÔLES DE DÉBOGAGE" Classes="section" />
+                                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+                                        <Button Grid.Row="0" Grid.Column="0" Content="▶ Continuer (F5)"
+                                                Classes="secondary" Margin="0,0,3,3"
+                                                Command="{Binding DebugContinueCommand}" />
+                                        <Button Grid.Row="0" Grid.Column="1" Content="⤼ Pas à pas (F10)"
+                                                Classes="secondary" Margin="3,0,0,3"
+                                                Command="{Binding DebugOverCommand}" />
+                                        <Button Grid.Row="1" Grid.Column="0" Content="↴ Entrer (F11)"
+                                                Classes="secondary" Margin="0,3,3,0"
+                                                Command="{Binding DebugIntoCommand}" />
+                                        <Button Grid.Row="1" Grid.Column="1" Content="↱ Sortir (Maj+F11)"
+                                                Classes="secondary" Margin="3,3,0,0"
+                                                Command="{Binding DebugOutCommand}" />
+                                    </Grid>
+                                </StackPanel>
+
+                                <TextBlock Text="POINTS D'ARRÊT" Classes="section" Margin="0,6,0,0" />
+                                <Grid ColumnDefinitions="*,*">
+                                    <Button Grid.Column="0" Content="● Ajouter (F9)" Classes="secondary" Margin="0,0,3,0"
+                                            Click="OnAddBreakpoint"
+                                            IsEnabled="{Binding HasFile}"
+                                            ToolTip.Tip="Ajoute un point d'arrêt à la ligne du curseur (F9)" />
+                                    <Button Grid.Column="1" Content="Tout effacer" Classes="secondary" Margin="3,0,0,0"
+                                            Command="{Binding ClearBreakpointsCommand}" />
+                                </Grid>
+                                <ListBox ItemsSource="{Binding Breakpoints}"
+                                         Background="Transparent"
+                                         MaxHeight="120"
+                                         FontSize="11" />
+
+                                <TextBlock Text="{Binding ExecutionStatus}"
+                                           FontSize="11" Foreground="{DynamicResource TextMuted}"
+                                           TextWrapping="Wrap" />
                                 <TextBlock Text="{Binding DebugStatus}"
                                            FontSize="11" Foreground="{DynamicResource TextMuted}"
+                                           TextWrapping="Wrap" />
+
+                                <TextBlock Text="Fichiers pris en charge : .cs, .csproj, .html, .htm, .css, .js, .ts, .py, .java, .go, .c, .cpp, .rs, .php, .rb, .ps1, .sh, .bat. Le débogage pas à pas nécessite l'adaptateur du langage (NetCoreDbg pour C#) ; sans lui, F5 exécute simplement le programme."
+                                           FontSize="10" Foreground="{DynamicResource TextDim}"
                                            TextWrapping="Wrap" />
                             </StackPanel>
                         </ScrollViewer>

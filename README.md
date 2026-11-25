@@ -25,7 +25,9 @@ Le planificateur `RunPlanner` détecte le type de fichier à partir de son exten
 | Fichier | Exécution / aperçu | Outil requis |
 | --- | --- | --- |
 | `.cs` | `dotnet run` ; projet temporaire si aucun `.csproj` parent | SDK .NET |
+| `.csproj` | `dotnet run --project` | SDK .NET |
 | `.html`, `.htm` | Aperçu dans le navigateur par défaut | Navigateur |
+| `.css` | Ouvre la page HTML voisine (`index.html`) | Navigateur |
 | `.js`, `.mjs`, `.cjs` | Exécution avec Node.js | Node.js |
 | `.ts`, `.mts`, `.cts` | Exécution avec `tsx` | Node.js + `npx` |
 | `.py` | Exécution Python non tamponnée | Python |
@@ -36,7 +38,19 @@ Le planificateur `RunPlanner` détecte le type de fichier à partir de son exten
 | `.c`, `.cpp`, `.cc`, `.cxx` | Compilation puis exécution | GCC / Clang |
 | `.rs` | `cargo run` ou `rustc` | Rust |
 
-Un fichier CSS est utilisé par une page HTML ; il ne se lance pas seul. HTML est interprété par le navigateur et ne se compile pas comme C#.
+HTML est interprété par le navigateur et ne se compile pas comme C#.
+
+### Raccourcis et boutons
+
+| Action | Raccourci | Où |
+| --- | --- | --- |
+| Exécuter et déboguer / Continuer | `F5` | menu *Exécuter*, panneau *Exécuter et déboguer* |
+| Exécuter sans débogage | `Ctrl+F5` | idem |
+| Arrêter | `Maj+F5` | idem |
+| Pas à pas principal / détaillé / sortant | `F10` / `F11` / `Maj+F11` | pendant le débogage |
+| Point d'arrêt à la ligne du curseur | `F9` | menu *Exécuter* |
+
+La sortie du programme s'affiche dans l'onglet *Terminal* ; la saisie (`Console.ReadLine`, `input()`...) se fait directement dans ce terminal. Si l'adaptateur de débogage du langage n'est pas installé, `F5` exécute simplement le programme (comme `Ctrl+F5`).
 
 ## Débogage multi-langages
 

@@ -45,3 +45,17 @@ public sealed record DebugStopInfo(
     int ThreadId,
     int? Line,
     string? SourcePath);
+
+/// <summary>Texte produit par le programme débogué (sortie standard / erreur) et transmis par l'adaptateur.</summary>
+public sealed class DebugOutputEventArgs(
+    DebugSessionId sessionId,
+    string category,
+    string text) : EventArgs
+{
+    public DebugSessionId SessionId { get; } = sessionId;
+
+    /// <summary>« stdout », « stderr » ou « console ».</summary>
+    public string Category { get; } = category;
+
+    public string Text { get; } = text;
+}
