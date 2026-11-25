@@ -119,7 +119,9 @@ public sealed class DebugAdapterRegistry
     }
 
     private string SupportedLanguages() =>
-        string.Join(", ", _adapters.SelectMany(adapter => adapter.LanguageIds));
+        string.Join(", ", _adapters
+            .Select(adapter => adapter.DisplayName)
+            .Distinct(StringComparer.OrdinalIgnoreCase));
 
     // ---------------------------------------------------------------------
     //  Adaptateurs

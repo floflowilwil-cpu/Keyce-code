@@ -14,6 +14,7 @@ public sealed class TerminalService : ITerminalService
         public PtySession Pty { get; } = pty;
         public SemaphoreSlim Gate { get; } = new(1, 1);
         public bool IsDisposed { get; set; }
+        public Task MonitorTask { get; set; } = Task.CompletedTask;
     }
 
     private readonly ConcurrentDictionary<TerminalSessionId, TerminalSession>
@@ -62,7 +63,7 @@ public sealed class TerminalService : ITerminalService
                 throw new InvalidOperationException(
                     "Impossible d'enregistrer la session de terminal.");
 
-            _ = MonitorSessionAsync(sessionId, session);
+            session.MonitorTask = MonitorSessionAsync(sessionId, session);
 
             return sessionId;
         }
@@ -132,15 +133,30 @@ public sealed class TerminalService : ITerminalService
 
         try
         {
-            if (session.IsDisposed)
-                return;
-
-            session.IsDisposed = true;
-            await session.Pty.DisposeAsync();
+            if (!session.IsDisposed)
+            {
+                session.IsDisposed = true;
+                await session.Pty.DisposeAsync();
+            }
         }
         finally
         {
             session.Gate.Release();
+        }
+
+        // Attendre la fin du lecteur PTY : aucune sortie de l'ancienne session
+        // ne doit arriver après que l'interface a réinitialisé l'écran.
+        try
+        {
+            await session.MonitorTask.WaitAsync(ct);
+        }
+        catch (IOException)
+        {
+            // Fermeture du transport PTY pendant son arrêt.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Le PTY a déjà été libéré.
         }
     }
 

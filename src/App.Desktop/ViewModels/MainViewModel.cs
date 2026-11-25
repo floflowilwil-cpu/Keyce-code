@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using App.Application.Composition;
 using App.Core.Contracts;
@@ -151,6 +152,9 @@ public partial class MainWindowViewModel : ObservableObject
 
     public void Log(string message) =>
         OutputText += $"[{DateTime.Now:HH:mm:ss}] {message}\n";
+
+    [RelayCommand]
+    private void ClearOutput() => OutputText = string.Empty;
 
     private void ReportError(AppException ex)
     {
@@ -1090,6 +1094,13 @@ public partial class MainWindowViewModel : ObservableObject
         IsBottomVisible = true;
     }
 
+    /// <summary>Affiche le terminal intégré sans démarrer un shell concurrent à un programme actif.</summary>
+    public void ShowTerminal()
+    {
+        BottomTab = 2;
+        IsBottomVisible = true;
+    }
+
     // ---------- Problèmes ----------
 
     public ObservableCollection<ProblemItem> Problems { get; } = new();
@@ -1147,6 +1158,15 @@ public partial class MainWindowViewModel : ObservableObject
 
     public ITerminalService TerminalService => _s.Terminal;
 
+    /// <summary>Sortie des programmes envoyée au terminal intégré pour garder saisie et réponse au même endroit.</summary>
+    public event Action<string>? ExecutionTerminalOutputReceived;
+
+    /// <summary>Demande à l'émulateur d'effacer l'écran avant une nouvelle session d'exécution.</summary>
+    public event Action? ExecutionTerminalResetRequested;
+
+    public bool IsExecutionInputActive =>
+        IsExecuting && _executionSessionId.HasValue;
+
     public TerminalSessionId? ActiveTerminalSessionId =>
         _terminalSessionId;
 
@@ -1161,6 +1181,9 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     public async Task EnsureTerminalAsync()
     {
+        if (IsExecuting || IsExecutionStarting)
+            return;
+
         if (IsTerminalRunning || _terminalSessionId.HasValue)
             return;
 
@@ -1213,19 +1236,60 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Transmet directement les octets reçus du contrôle terminal au PTY.
-    /// Cela permet au shell de gérer lui-même les touches, l'historique,
-    /// les raccourcis clavier et les séquences de contrôle.
+    /// Ferme le shell interactif avant d'afficher la sortie d'un processus redirigé.
+    /// Les deux flux ne partagent ainsi jamais le même écran en même temps.
+    /// </summary>
+    public async Task PrepareTerminalForExecutionAsync()
+    {
+        if (_terminalSessionId is { } sessionId)
+        {
+            _terminalSessionId = null;
+            OnPropertyChanged(nameof(ActiveTerminalSessionId));
+            IsTerminalRunning = false;
+
+            try
+            {
+                await _s.Terminal.StopSessionAsync(sessionId);
+            }
+            catch (Exception ex)
+            {
+                Log("Fermeture du shell avant exécution : " + ex.Message);
+            }
+        }
+
+        TerminalStatus = "Exécution dans le terminal…";
+        ExecutionTerminalResetRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// Transmet les octets du contrôle terminal au programme en cours ou au shell PTY.
     /// </summary>
     public async Task SendTerminalInputBytesAsync(
         ReadOnlyMemory<byte> input)
     {
-        if (_terminalSessionId is not { } sessionId ||
-            !IsTerminalRunning ||
-            input.IsEmpty)
+        if (input.IsEmpty)
+            return;
+
+        // Pendant l'exécution, le terminal intégré devient l'entrée standard du programme.
+        // Cela évite de saisir dans un champ séparé alors que la réponse apparaît ailleurs.
+        if (_executionSessionId is { } executionId && IsExecuting)
         {
+            try
+            {
+                string text = System.Text.Encoding.UTF8.GetString(input.Span);
+                await _s.Execution.SendInputAsync(executionId, text);
+            }
+            catch (Exception ex)
+            {
+                TerminalStatus = "Le programme n'accepte plus de saisie.";
+                Log("Saisie du programme : " + ex.Message);
+            }
+
             return;
         }
+
+        if (_terminalSessionId is not { } sessionId || !IsTerminalRunning)
+            return;
 
         try
         {

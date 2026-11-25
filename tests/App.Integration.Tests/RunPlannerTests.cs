@@ -75,13 +75,50 @@ public class RunPlannerTests : IDisposable
     }
 
     [Fact]
-    public void PlanRun_CSharpWithoutProject_RunsSingleFile()
+    public void PlanRun_CSharpWithoutProject_UsesTemporaryProject()
     {
         string source = CreateFile("solo/Program.cs");
 
         RunPlan plan = new RunPlanner(Everything).PlanRun(source);
 
-        Assert.Equal("run|" + source, Args(Assert.Single(plan.Steps)));
+        RunStep step = Assert.Single(plan.Steps);
+        Assert.StartsWith("run|--project|", Args(step));
+        Assert.EndsWith("Program.csproj", Args(step));
+        Assert.True(File.Exists(step.Options.Arguments![2]));
+        Assert.Contains(source, File.ReadAllText(step.Options.Arguments[2]));
+    }
+
+    [Fact]
+    public void PlanRun_CSharpProject_RunsProjectDirectly()
+    {
+        string project = CreateFile("sample/Sample.csproj");
+
+        RunPlan plan = new RunPlanner(Everything).PlanRun(project);
+
+        Assert.Equal("csharp", plan.LanguageId);
+        RunStep step = Assert.Single(plan.Steps);
+        Assert.Equal("run|--project|" + project, Args(step));
+        Assert.Equal(Path.GetDirectoryName(project), step.Options.WorkingDirectory);
+    }
+
+    [Fact]
+    public void PlanDebug_CSharpProject_BuildsProject()
+    {
+        string project = CreateFile("sample/Sample.csproj");
+
+        RunPlan plan = new RunPlanner(Everything).PlanDebugBuild(project);
+
+        Assert.Equal("build|" + project + "|-c|Debug|-nologo", Args(Assert.Single(plan.Steps)));
+    }
+
+    [Fact]
+    public void PlanRun_Html_OpensDefaultBrowser()
+    {
+        RunPlan plan = new RunPlanner(Everything).PlanRun(CreateFile("site/index.html"));
+
+        Assert.Equal("html", plan.LanguageId);
+        RunStep step = Assert.Single(plan.Steps);
+        Assert.Contains(Path.GetFileName(step.Options.Executable), new[] { "cmd.exe", "cmd", "open", "xdg-open" });
     }
 
     [Fact]
@@ -119,6 +156,18 @@ public class RunPlannerTests : IDisposable
 
         Assert.Throws<FileNotFoundException>(
             () => planner.PlanRun(Path.Combine(_root, "absent.py")));
+    }
+
+    [Fact]
+    public void PlanDebug_CSharpProject_ProducesBuildPlan()
+    {
+        string project = CreateFile("sample/Sample.csproj");
+
+        DebugPlan plan = new RunPlanner(Everything).PlanDebug(project);
+
+        Assert.Equal("csharp", plan.LanguageId);
+        Assert.Null(plan.Program);
+        Assert.Equal("build|" + project + "|-c|Debug|-nologo", Args(Assert.Single(plan.Build!.Steps)));
     }
 
     [Fact]
@@ -173,6 +222,40 @@ public class RunPlannerTests : IDisposable
         Assert.Equal("csharp", plan.LanguageId);
         Assert.NotNull(plan.Build);
         Assert.Null(plan.Program);
+    }
+
+    [Fact]
+    public void PlanDebug_CSharpStandalone_CreatesTemporaryProject()
+    {
+        string source = CreateFile("standalone/Program.cs");
+
+        DebugPlan plan = new RunPlanner(Everything).PlanDebug(source);
+
+        RunStep build = Assert.Single(plan.Build!.Steps);
+        string project = build.Options.Arguments![1];
+        Assert.EndsWith("Program.csproj", project);
+        Assert.True(File.Exists(project));
+        Assert.Contains(source, File.ReadAllText(project));
+    }
+
+    [Fact]
+    public void PlanDebug_Html_ExplainsBrowserDebuggingIsNotAvailable()
+    {
+        var planner = new RunPlanner(Everything);
+        NotSupportedException error = Assert.Throws<NotSupportedException>(
+            () => planner.PlanDebug(CreateFile("site/index.html")));
+        Assert.Contains("JavaScript", error.Message);
+    }
+
+    [Fact]
+    public void PlanDebug_JavaScript_ExplainsMissingDebugAdapter()
+    {
+        var planner = new RunPlanner(Everything);
+        NotSupportedException error = Assert.Throws<NotSupportedException>(
+            () => planner.PlanDebug(CreateFile("site/app.js")));
+
+        Assert.Contains("Node.js", error.Message);
+        Assert.Contains("js-debug", error.Message);
     }
 
     [Fact]
