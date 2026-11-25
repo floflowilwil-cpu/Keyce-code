@@ -40,6 +40,9 @@ sealed class FakeEditor : IEditorService
     public IReadOnlyList<DocumentInfo> GetOpenDocuments() => _docs.Keys.Select(GetInfo).ToList();
 
     public string GetText(DocumentId id) => _docs[id].Text;
+    public int GetLineCount(DocumentId id) => _docs[id].Text.Split('\n').Length;
+
+    public string GetLineText(DocumentId id, int line) => _docs[id].Text.Split('\n')[line];
 
     public void ApplyEdit(DocumentId id, TextEdit edit)
     {

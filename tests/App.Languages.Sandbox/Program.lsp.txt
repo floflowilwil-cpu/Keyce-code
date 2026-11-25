@@ -1,0 +1,63 @@
+﻿using App.Core.Errors;
+using App.Core.Models;
+using App.Languages;
+
+using var client = new LanguageClient();
+var signal = new SemaphoreSlim(0);
+
+client.DiagnosticsPublished += (_, e) =>
+{
+    Console.WriteLine($"Diagnostics ({e.Diagnostics.Count}) pour {e.Path}");
+    foreach (var d in e.Diagnostics)
+        Console.WriteLine($"  ligne {d.Range.Start.Line + 1} [{d.Severity}] : {d.Message}");
+    signal.Release();
+};
+
+client.ServerDisconnected += (_, language) =>
+    Console.WriteLine($"Serveur '{language}' déconnecté.");
+
+var root = Directory.GetCurrentDirectory();
+await client.StartServerAsync("python", root);
+
+var file = Path.Combine(root, "test.py");
+
+Console.WriteLine("--- Ouverture ---");
+await client.OpenDocumentAsync(file, "python", "import os\nprint(valeur_inconnue)\nos.getc\n");
+await signal.WaitAsync(TimeSpan.FromSeconds(15));
+
+Console.WriteLine("--- Complétion après 'os.getc' ---");
+var completions = await client.CompletionAsync(file, new TextPosition(2, 7));
+foreach (var c in completions.Take(5))
+    Console.WriteLine($"  {c.Label} ({c.Kind}) {c.Detail}");
+
+Console.WriteLine("--- Survol sur 'os' ---");
+Console.WriteLine(await client.GetHoverAsync(file, new TextPosition(2, 1)) ?? "(aucun)");
+
+Console.WriteLine("--- Définition de 'os' ---");
+var defs = await client.DefinitionAsync(file, new TextPosition(2, 1));
+foreach (var l in defs)
+    Console.WriteLine($"  {l.Path} (ligne {l.Range.Start.Line + 1})");
+
+Console.WriteLine("--- Après correction (didChange) ---");
+await client.ChangeDocumentAsync(file, "print('ok')\n");
+await signal.WaitAsync(TimeSpan.FromSeconds(15));
+
+Console.WriteLine("--- Robustesse ---");
+await client.StartServerAsync("python", root);   // 2e appel : ne doit pas planter
+Console.WriteLine("Redémarrage idempotent : OK");
+
+try { await client.CompletionAsync(Path.Combine(root, "x.xyz"), new TextPosition(0, 0)); }
+catch (AppException e) { Console.WriteLine($"Extension inconnue → {e.Code} : {e.Message}"); }
+
+try { await client.StartServerAsync("cobol", root); }
+catch (AppException e) { Console.WriteLine($"Langage inconnu → {e.Code} : {e.Message}"); }
+
+using (var other = new LanguageClient())
+{
+    try { await other.CompletionAsync(file, new TextPosition(0, 0)); }
+    catch (AppException e) { Console.WriteLine($"Serveur non démarré → {e.Code} : {e.Message}"); }
+}
+
+await client.CloseDocumentAsync(file);
+await client.StopAsync();
+Console.WriteLine("Terminé.");
